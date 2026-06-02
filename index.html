@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>パチスロ シミュレーター</title>
+    <style>
+        body {
+            background-color: #222;
+            color: #fff;
+            font-family: sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: #333;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+        .screen {
+            background: #000;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #0f0;
+            border: 2px solid #555;
+        }
+        .reels {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+        }
+        .reel {
+            width: 80px;
+            height: 120px;
+            background: #fff;
+            color: #000;
+            font-size: 2rem;
+            font-weight: bold;
+            line-height: 120px;
+            border-radius: 5px;
+            border: 3px solid #777;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+            background: #444;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+        button {
+            width: 100%;
+            padding: 15px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            background: #ff9800;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 5px #e65100;
+        }
+        button:active {
+            box-shadow: 0 2px #e65100;
+            transform: translateY(3px);
+        }
+        .nav-btn {
+            margin-top: 20px;
+            background: #2196F3;
+            box-shadow: 0 5px #0b7dda;
+            font-size: 1rem;
+            padding: 10px;
+        }
+        .nav-btn:active {
+            box-shadow: 0 2px #0b7dda;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>パチスロ シミュレーター</h2>
+    
+    <div class="screen" id="液晶演出">通常ステージ</div>
+
+    <div class="reels">
+        <div class="reel" id="左リール">-</div>
+        <div class="reel" id="中リール">-</div>
+        <div class="reel" id="右リール">-</div>
+    </div>
+
+    <button id="leverBtn" onclick="leverOn()">LEVER ON</button>
+
+    <div class="stats">
+        <div>総ゲーム数: <span id="counterG">0</span> G</div>
+        <div>現在の差枚数: <span id="counterMedal">0</span> 枚</div>
+        <div>BB回数: <span id="counterBB">0</span></div>
+        <div>RB回数: <span id="counterRB">0</span></div>
+        <div>CZ回数: <span id="counterCZ">0</span></div>
+        <div>現在の内部状態: <span id="internalState">通常</span></div>
+    </div>
+
+    <button class="nav-btn" onclick="goToAnalyzer()">📊 台データ・解析ツールを開く</button>
+</div>
+
+<script>
+// ==========================================
+// 1. 各種変数・初期データ管理
+// ==========================================
+let gameData = {
+    totalG: 0,
+    currentMedal: 0,
+    countBB: 0,
+    countRB: 0,
+    countCZ: 0,
+    state: "通常", // 通常, CZ, BB, RB
+    bonusRemainingG: 0,
+    historyG: [] // 履歴保存用（例: [320, 150, 45] など当選G数の羅列）
+};
+
+// ローカルストレージから過去のデータを読み込み（初期化対策）
+if (localStorage.getItem('slot_play_data')) {
+    gameData = JSON.parse(localStorage.getItem('slot_play_data'));
+    updateDisplay();
+}
+
+// ==========================================
+// 2. メイン処理：レバーオン
+// ==========================================
+function leverOn() {
+    // 状態に応じたメダル投資・ゲーム数加算
+    if (gameData.state === "通常" || gameData.state === "CZ") {
+        gameData.currentMedal -= 3; // 通常時は3枚掛け
+        gameData.totalG++;
+    } else if (gameData.state === "BB" || gameData.state === "RB") {
+        gameData.currentMedal -= 1; // ボーナス中は1枚掛け（例）
+        gameData.bonusRemainingG--;
+    }
+
+    // 抽選処理
+    const lottery = Math.random() * 65536; // 一発抽選用（1/65536）
+    
+    if (gameData.state === "通常") {
+        normalLottery(lottery);
+    } else if (gameData.state === "CZ") {
+        czLottery(lottery);
+    } else if (gameData.state === "BB" || gameData.state === "RB") {
+        bonusLottery();
+    }
+
+    // データの保存と画面更新
+    saveData();
+    updateDisplay();
+}
+
+// ==========================================
+// 3. 状態別の抽選ロジック
+// ==========================================
+
+// 通常時の抽選
+function normalLottery(lot) {
+    if (lot < 200) { // 約1/327（直撃BB）
+        triggerBB();
+    } else if (lot < 600) { // 約1/163（直撃RB）
+        triggerRB();
+    } else if (lot < 2000) { // 約1/43（CZ当選）
+        gameData.state = "CZ";
+        document.getElementById('液晶演出').innerText = "🔥 CZ「チャンスゾーン」突入！";
+        gameData.countCZ++;
+    } else if (lot < 8000) { // 小役（リプレイ・ベルなど）
+        showReels("🔔", "🔔", "🔔");
+        gameData.currentMedal += 8;
+        document.getElementById('液晶演出').innerText = "ベル揃い（+8枚）";
+    } else {
+        showReels("💀", "🎯", "🌀");
+        document.getElementById('液晶演出').innerText = "通常";
+    }
+}
+
+// CZ中の抽選
+function czLottery(lot) {
+    if (lot < 5000) { // CZ中につきボーナス確率大幅アップ
+        triggerBB();
+    } else if (lot < 15000) {
+        showReels("🔔", "🔔", "🔔");
+        gameData.currentMedal += 8;
+        document.getElementById('液晶演出').innerText = "CZ中：ベル（大チャンス！）";
+    } else {
+        showReels("💀", "🎯", "🌀");
+        document.getElementById('液晶演出').innerText = "CZ継続中...";
+        // 簡易的に10%で通常転落
+        if (Math.random() < 0.1) {
+            gameData.state = "通常";
+            document.getElementById('液晶演出').innerText = "CZ失敗...通常へ";
+        }
+    }
+}
+
+// ボーナス中の処理
+function bonusLottery() {
+    showReels("赤7", "赤7", "赤7");
+    gameData.currentMedal += 15; // 毎ゲーム15枚払い出し
+
+    if (gameData.bonusRemainingG <= 0) {
+        document.getElementById('液晶演出').innerText = "ボーナス終了！通常へ";
+        gameData.state = "通常";
+    } else {
+        document.getElementById('液晶演出').innerText = `${gameData.state}消化中（残り ${gameData.bonusRemainingG} G）`;
+    }
+}
+
+// ==========================================
+// 4. フラグ制御用補助関数
+// ==========================================
+function triggerBB() {
+    showReels("赤7", "赤7", "赤7");
+    document.getElementById('液晶演出').innerText = "🎉 BIG BONUS 当選！";
+    gameData.state = "BB";
+    gameData.bonusRemainingG = 30; // 30G継続
+    gameData.countBB++;
+    gameData.historyG.push({type: 'BB', game: gameData.totalG});
+}
+
+function triggerRB() {
+    showReels("BAR", "BAR", "BAR");
+    document.getElementById('液晶演出').innerText = "⚡ REG BONUS 当選！";
+    gameData.state = "RB";
+    gameData.bonusRemainingG = 10; // 10G継続
+    gameData.countRB++;
+    gameData.historyG.push({type: 'RB', game: gameData.totalG});
+}
+
+function showReels(l, m, r) {
+    document.getElementById('左リール').innerText = l;
+    document.getElementById('中リール').innerText = m;
+    document.getElementById('右リール').innerText = r;
+}
+
+// ==========================================
+// 5. データ連携・表示更新
+// ==========================================
+function saveData() {
+    // 別の解析ツールファイル（analyzer.html）から読み込めるようにブラウザに保存
+    localStorage.setItem('slot_play_data', JSON.stringify(gameData));
+}
+
+function updateDisplay() {
+    document.getElementById('counterG').innerText = gameData.totalG;
+    document.getElementById('counterMedal').innerText = gameData.currentMedal;
+    document.getElementById('counterBB').innerText = gameData.countBB;
+    document.getElementById('counterRB').innerText = gameData.countRB;
+    document.getElementById('counterCZ').innerText = gameData.countCZ;
+    document.getElementById('internalState').innerText = gameData.state;
+}
+
+function goToAnalyzer() {
+    // 解析ツールへ遷移（同じフォルダ内に analyzer.html を作る想定）
+    window.location.href = 'analyzer.html';
+}
+</script>
+
+</body>
+</html>
