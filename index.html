@@ -178,10 +178,11 @@ button{cursor:pointer}
  transition: background-color 0.3s, color 0.3s;
 }
 
-/* ★ v4.10 前兆文字カラー用拡張スタイル */
-.serifu-blue  { color: #2196f3; font-weight: bold; font-size: 19px; }
-.serifu-green { color: #00c853; font-weight: bold; font-size: 21px; text-shadow: 0 0 4px rgba(0,200,83,0.3); }
-.serifu-red   { color: #ff1744; font-weight: bold; font-size: 24px; text-shadow: 0 0 8px rgba(255,23,68,0.4); }
+/* 前兆文字カラー用スタイル */
+.serifu-black { color: #555555; font-weight: bold; font-size: 19px; }
+.serifu-blue  { color: #2196f3; font-weight: bold; font-size: 20px; }
+.serifu-green { color: #00c853; font-weight: bold; font-size: 22px; text-shadow: 0 0 4px rgba(0,200,83,0.2); }
+.serifu-red   { color: #ff1744; font-weight: bold; font-size: 25px; text-shadow: 0 0 8px rgba(255,23,68,0.3); }
 
 .play-btn-container {
  position: fixed;
@@ -265,7 +266,7 @@ button{cursor:pointer}
 <body>
 
 <div id="slotArea">
- <div class="version-tag">v4.25 [フラッシュ統合・完成版]</div>
+ <div class="version-tag">v4.50 [モード＆特化ゾーン搭載]</div>
 
  <div class="volume-container">
   <span>🔈 音量:</span>
@@ -288,7 +289,7 @@ button{cursor:pointer}
 
  <div class="status-panel">
   <div id="slotState" class="status-state">状態: 通常モード</div>
-  <div class="status-item" id="normalGameCount">通常: 0G</div>
+  <div class="status-item" id="normalGameCount">通常: 0G (0pt)</div>
   <div class="status-item" id="subGameCount"></div>
   <div class="status-item" id="totalBonusGameCount" style="display:none;">累計AT: 0G</div>
  </div>
@@ -324,6 +325,14 @@ let countRB = 0;
 let currentMode = "NORMAL"; 
 let normalGames = 0;
 
+/* ★ v4.50 モード管理・規定ポイント用の新規変数 */
+let currentPoint = 0;       // 現在の累積ポイント
+let currentSlotMode = "A";  // A, B, C, 天国
+let targetPoint = 600;      // 今回の解除規定ポイント
+
+/* 特化ゾーン用変数 */
+let tokkaRemainingG = 0;    // 特化ゾーン残りゲーム数
+
 /* プチボーナス（PB）用の管理変数 */
 let pbBellCount = 0;      
 let pbAtHit = false;      
@@ -349,20 +358,24 @@ let atCurrentGames = 0;
 let bonusStartSamai = 0; 
 let lastCalculatedGain = 0; 
 
-/* 天井短縮フラグ */
+/* 天井短縮フラグ(モード移行導入に伴い、表示・内部整合を維持) */
 let isCeilingShortened = false; 
 
-/* ★ v4.25 前兆システム管理変数 */
-let zenchoRemaining = 0;   // 前兆残りゲーム数
-let isZenchoHit = false;    // 本前兆（当たり）かフェイクか
-let zenchoLevel = 1;       // 1:弱前兆, 2:普通, 3:強前兆
+/* 前兆システム管理変数 */
+let zenchoRemaining = 0;   
+let isZenchoHit = false;    
+let zenchoLevel = 1;       
+
+/* 特化ゾーン前兆管理フラグ */
+let tokkaZenchoRemaining = 0;
+let isTokkaZenchoHit = false;
 
 let bonusStartSamaiG = 0; 
 
 /* --- バトルの変数管理 --- */
 let battleState = "NONE"; 
 let bZenchoRemaining = 0;
-let isBattleHitMaster = false; // バトル本前兆フラグ
+let isBattleHitMaster = false; 
 
 let enemyType = "";
 let enemyMaxHP = 0;
@@ -391,9 +404,45 @@ let currentSkipInterval = 240;
 let slotHistories = [];
 
 window.onload = () => {
+ // 朝イチのモード・規定ポイント選択
+ lotteryNextModeAndPoint();
  updateSlotDisplay();
  initAudio();
 };
+
+/* ★ v4.50 新設：モード及び規定ポイント振り分けガチ抽選マシーン */
+function lotteryNextModeAndPoint() {
+ currentPoint = 0;
+ let modeRoll = Math.random() * 100;
+ 
+ if (modeRoll < 40) {
+  currentSlotMode = "A";
+  let ptRoll = Math.random() * 100;
+  if (ptRoll < 1) targetPoint = 100;
+  else if (ptRoll < 11) targetPoint = 200;
+  else if (ptRoll < 12) targetPoint = 300;
+  else if (ptRoll < 22) targetPoint = 400;
+  else if (ptRoll < 23) targetPoint = 500;
+  else targetPoint = 600; // 天井
+ } else if (modeRoll < 80) {
+  currentSlotMode = "B";
+  let ptRoll = Math.random() * 100;
+  if (ptRoll < 15) targetPoint = 100;
+  else if (ptRoll < 20) targetPoint = 200;
+  else if (ptRoll < 35) targetPoint = 300;
+  else if (ptRoll < 40) targetPoint = 400;
+  else targetPoint = 500; // 天井
+ } else if (modeRoll < 95) {
+  currentSlotMode = "C";
+  let ptRoll = Math.random() * 100;
+  if (ptRoll < 22) targetPoint = 100;
+  else if (ptRoll < 66) targetPoint = 200;
+  else targetPoint = 300; // 天井
+ } else {
+  currentSlotMode = "天国";
+  targetPoint = 100; // 天井
+ }
+}
 
 function toggleHistory() {
  const box = document.getElementById("historyBox");
@@ -537,9 +586,9 @@ function updateSlotDisplay() {
  const subGEl = document.getElementById("subGameCount");
  const totalBBEl = document.getElementById("totalBonusGameCount");
 
- let loopStatusStr = isCeilingShortened ? " [天井短縮中!!]" : "";
+ let loopStatusStr = ` [モード${currentSlotMode}]`;
  let hikimodoshiStr = isHikimodoshiMode ? ` [引き戻し中:${hikimodoshiGames}G]` : "";
- normalGEl.innerText = `通常: ${normalGames}G${loopStatusStr}${hikimodoshiStr} [${pbThroughCount}/3スルー]`;
+ normalGEl.innerText = `通常: ${normalGames}G (${currentPoint}pt / ${targetPoint}pt)${loopStatusStr}${hikimodoshiStr} [${pbThroughCount}/3スルー]`;
  
  if (isSkipRunning && isBonusReadyG) {
   stopSkip();
@@ -550,8 +599,14 @@ function updateSlotDisplay() {
  }
  
  if (currentMode === "NORMAL") {
-  if (zenchoRemaining > 0) {
-   stateEl.innerText = isZenchoHit ? "状態: 🎰本前兆(大当り!?)🎰" : "状態: 👥フェイク前兆👥";
+  if (tokkaRemainingG > 0) {
+   stateEl.innerText = `状態: 🔥ポイント上乗せ特化ゾーン🔥 (あと ${tokkaRemainingG}G)`;
+   stateEl.style.color = "#ff5722";
+  } else if (tokkaZenchoRemaining > 0) {
+   stateEl.innerText = "状態: 🔍作戦準備前兆🔍";
+   stateEl.style.color = "#ff9800";
+  } else if (zenchoRemaining > 0) {
+   stateEl.innerText = "状態: 🎬前兆ステージ🎬";
    stateEl.style.color = "#2196f3";
   } else {
    stateEl.innerText = "状態: 通常モード";
@@ -559,7 +614,7 @@ function updateSlotDisplay() {
   }
   subGEl.innerText = "";
   totalBBEl.style.display = "none";
-  document.getElementById("mainPlayBtn").innerText = "PLAY (-3枚)";
+  document.getElementById("mainPlayBtn").innerText = tokkaRemainingG > 0 ? "特化レバーオン！ (-3枚)" : "PLAY (-3枚)";
  } else if (isBonusReadyG) {
   stateEl.innerText = "状態: 🎰ボーナス確定画面🎰";
   stateEl.style.color = "#4caf50";
@@ -589,7 +644,7 @@ function updateSlotDisplay() {
    stateEl.style.color = "#e91e63";
    subGEl.innerHTML = `${medalDisplayStr} <span style="color:#7f8c8d; font-size:14px; margin-left:8px;">(AT内G数: ${atCurrentGames}G)</span>`;
   } else if (battleState === "PRE") {
-   stateEl.innerText = isBattleHitMaster ? "状態: ⚔️バトル本前兆⚔️" : "状態: 🎬作戦区域(前兆)🎬";
+   stateEl.innerText = "状態: 🎬作戦区域(前兆)🎬";
    stateEl.style.color = "#9c27b0";
    subGEl.innerHTML = `${medalDisplayStr} <span style="color:#9c27b0; font-size:14px; margin-left:8px;">(前兆あと ${bZenchoRemaining}G)</span>`;
   } else if (battleState === "BATTLE") {
@@ -604,7 +659,6 @@ function updateSlotDisplay() {
  }
 }
 
-/* ★ v4.25 改修：3色対応ガチセリフ演出生成マシーン（赤はハズレ時の1%） */
 function generateSerifuHTML(isHit) {
  const poolNormal = [
   "「なんだか周囲が騒がしいな…？」", "「少し様子を見てみよう…」", "「気のせいか…？」", 
@@ -629,23 +683,17 @@ function generateSerifuHTML(isHit) {
   selectedText = poolHigh[Math.floor(Math.random() * poolHigh.length)];
  }
 
- let colorClass = "serifu-blue"; 
+ let colorClass = "serifu-black"; 
  let colorRoll = Math.random();
 
  if (isHit) {
-  // 当たり時：赤10%、緑30%、青60%
-  if (colorRoll < 0.10) {
-   colorClass = "serifu-red";
-  } else if (colorRoll < 0.40) {
-   colorClass = "serifu-green";
-  }
+  if (colorRoll < 0.05) colorClass = "serifu-red";
+  else if (colorRoll < 0.20) colorClass = "serifu-green";
+  else if (colorRoll < 0.40) colorClass = "serifu-blue";
  } else {
-  // ハズレ（ガセ）時：赤1%、緑10%、青89%（ガセでの赤頻発を完全防止！）
-  if (colorRoll < 0.01) {
-   colorClass = "serifu-red";
-  } else if (colorRoll < 0.11) {
-   colorClass = "serifu-green";
-  }
+  if (colorRoll < 0.005) colorClass = "serifu-red";
+  else if (colorRoll < 0.025) colorClass = "serifu-green";
+  else if (colorRoll < 0.10) colorClass = "serifu-blue";
  }
 
  return `<br><div class="${colorClass}">${selectedText}</div>`;
@@ -663,14 +711,9 @@ function getRandomHazureReels() {
 function playSlot(isViaSkip) {
  initAudio();
  
- // プチボーナスが8回引き終わった状態（isPbFinishedG）なら最優先で脱出ジャッジへ
  if (currentMode === "PETIT_BONUS" && isPbFinishedG) {
   isPbFinishedG = false; 
-  if (pbAtHit) {
-   nextBonusType = "AT";
-  } else {
-   nextBonusType = "THROUGH"; 
-  }
+  nextBonusType = pbAtHit ? "AT_DIRECT" : "THROUGH"; 
   isBonusReadyG = true; 
   document.getElementById("msgDisplay").innerHTML = `<div>レバーオンしろ！ [±0枚]</div><br><span style="color:#fff; font-weight:bold;">🎰 図柄を狙え！運命の生揃いレバーオン！ 🎰</span>`;
   soundBonusReady();
@@ -750,7 +793,6 @@ function playSlot(isViaSkip) {
  netSamai += (roleName === "リプレイ" ? 0 : payout); 
  totalOutMedals += payout; 
 
- // AT中の差枚数管理
  if (currentMode === "BIG" && currentMode !== "BONUS_READY" && !battleFailedGraceG) {
   if (roleName !== "リプレイ") {
    let netGainThisG = payout - 3;
@@ -763,12 +805,12 @@ function playSlot(isViaSkip) {
  if (lastWasWeakRare && (roleName === "強スイカ" || roleName === "強チェリー")) { comboHit = true; }
  lastWasWeakRare = (roleName === "弱スイカ" || roleName === "弱チェリー");
 
- // 図柄を揃える確定ゲーム（isBonusReadyG）での履歴一発記録
+ // 図柄を揃える確定ゲーム（isBonusReadyG）
  if (isBonusReadyG) {
   isBonusReadyG = false; 
   totalOutMedals += 3; 
 
-  if (nextBonusType === "AT") {
+  if (nextBonusType === "AT" || nextBonusType === "AT_DIRECT") {
    countBB++;
    bonusStartSamaiG = netSamai; 
    document.getElementById("reel1").innerText = "7️⃣";
@@ -780,7 +822,6 @@ function playSlot(isViaSkip) {
    totalBigGames = 0;
    atCurrentGames = 0; 
    battleState = "NONE";
-   isCeilingShortened = false;
    battleFailedGraceG = false; 
    wasZeroMedalLastG = false; 
    pbThroughCount = 0; 
@@ -790,7 +831,8 @@ function playSlot(isViaSkip) {
    hasHikimodoshi権利 = false;
    
    payMsgHTML = `<div>777揃い [±0枚]</div><br><span style="color:#e91e63; font-size:20px;">🔴 BIG BONUS(AT) 150枚スタート！</span>`;
-   addSlotHistory(`${normalGames}G → メインAT突入！[契機:${pbTrigger契機}]`);
+   let contractReason = (nextBonusType === "AT_DIRECT") ? "プチボ中AT当選" : pbTrigger契機;
+   addSlotHistory(`${normalGames}G → メインAT突入！[契機:${contractReason}]`);
    soundBonusStart();
   } 
   else if (nextBonusType === "PB") {
@@ -811,6 +853,8 @@ function playSlot(isViaSkip) {
   else if (nextBonusType === "THROUGH") {
    currentMode = "NORMAL";
    pbThroughCount++; 
+   // ポイントリセット＆次モード選定
+   lotteryNextModeAndPoint();
    normalGames = 0;  
    isHikimodoshiMode = false; 
    hasHikimodoshi権利 = false;
@@ -829,92 +873,55 @@ function playSlot(isViaSkip) {
  /* --- B. 通常モード --- */
  if (currentMode === "NORMAL") {
   normalGames++;
-  let maxCeilingG = isCeilingShortened ? 200 : 300;
 
-  // 通常時のガチ前兆突入トリガー判定
-  if (zenchoRemaining === 0) {
-   let isTriggered = false;
-   let pbProb = (roleName === "弱スイカ") ? 0.0625 : (roleName === "弱チェリー" ? 0.125 : (roleName === "強スイカ" ? 0.25 : (roleName === "強チェリー" ? 0.50 : 0)));
-   if (comboHit) pbProb = 1.00;
-
-   // 1. レア役による抽選
-   if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
-    let rollHit = (Math.random() < pbProb);
-    if (rollHit) {
-     if (Math.random() < 0.90) { isTriggered = true; isZenchoHit = true; pbTrigger契機 = roleName; } // 本前兆（9割）
-    } else {
-     if (Math.random() < 0.40) { isTriggered = true; isZenchoHit = false; pbTrigger契機 = "規定ゲーム数"; } // ガセ前兆（40%）
-    }
-   }
-   // 2. 規定ゲーム数ゾーンによる抽選
-   else {
-    let targetCheckG = isCeilingShortened ? [50, 100, 150] : [50, 100, 150, 200, 250];
-    if (targetCheckG.includes(normalGames)) {
-     let gRoll = Math.random();
-     let zoneHitProb = (normalGames === 50) ? 0.125 : (normalGames === 100 ? 0.33 : (normalGames === 150 ? 0.125 : (normalGames === 200 ? 0.50 : 0.25)));
-     if (gRoll < zoneHitProb) {
-      isTriggered = true; isZenchoHit = true; pbTrigger契機 = "規定ゲーム数";
-     } else {
-      isTriggered = true; isZenchoHit = false; // ガセ
-     }
-    }
-    // 3. 天井到達判定（100%前兆へ突入）
-    else if (normalGames >= maxCeilingG) {
-     isTriggered = true; isZenchoHit = true; pbTrigger契機 = "天井到達";
-    }
-   }
-
-   if (isTriggered) {
-    zenchoRemaining = Math.floor(Math.random() * 7) + 6; // 6〜12G
-    if (isZenchoHit) {
-     zenchoLevel = Math.random() < 0.4 ? 3 : 2; 
-    } else {
-     zenchoLevel = Math.random() < 0.7 ? 1 : 2; 
-    }
-   }
-  }
-
-  // 強チェリー直撃用の特殊前兆（3%）
-  if (roleName === "強チェリー" && zenchoRemaining === 0 && !isStrongCherryDirectAt) {
-   if (Math.random() < 0.03) {
-    isStrongCherryDirectAt = true; isZenchoHit = true; pbTrigger契機 = "強チェリー直撃";
-    zenchoRemaining = Math.floor(Math.random() * 5) + 4;
-    zenchoLevel = 3; 
-    addSlotHistory(`通常時 強チェリーからAT直撃前兆へ！`);
-   }
-  }
-
-  // 引き戻しゾーンの判定
-  if (isHikimodoshiMode && hasHikimodoshi権利) {
-   hikimodoshiGames++;
-   let isHikimodoshiHit = (hikimodoshiGames < 32 && Math.random() < (1 / 32)) || (hikimodoshiGames >= 32);
-   if (isHikimodoshiHit) {
-    isHikimodoshiMode = false; hasHikimodoshi権利 = false; hikimodoshiGames = 0; nextBonusType = "AT"; isBonusReadyG = true;
-    document.getElementById("msgDisplay").innerHTML = `<div>引き戻し成功！図柄を揃えろ！ [±0枚]</div>`;
-    soundBonusReady(); return;
-   }
-  } else {
-   if (normalGames === 32 && zenchoRemaining === 0 && hasHikimodoshi権利) {
-    hasHikimodoshi権利 = false; addSlotHistory(`32G到達 ➔ 引き戻しはありませんでした。`); payMsgHTML += `<br><span style="color:#bbb; font-size:14px;">（引き戻しはなかった……通常モードへ）</span>`;
-   }
-  }
-
-  // 前兆の進行・セリフ出力
   let serifuHTML = "";
-  if (zenchoRemaining > 0) {
+
+  // 1. 特化ゾーン処理（最優先）
+  if (tokkaRemainingG > 0) {
+   tokkaRemainingG--;
+   let pointUwanose = 0;
+   let upRoll = Math.random() * 100;
+
+   if (roleName === "ハズレ" || roleName.includes("ベル")) {
+    pointUwanose = upRoll < 90 ? 5 : 10;
+   } else if (roleName === "リプレイ") {
+    pointUwanose = upRoll < 90 ? 10 : 50;
+   } else if (["弱スイカ", "弱チェリー"].includes(roleName)) {
+    pointUwanose = upRoll < 50 ? 30 : (upRoll < 90 ? 50 : 100);
+   } else if (["強スイカ", "強チェリー"].includes(roleName)) {
+    pointUwanose = upRoll < 45 ? 50 : (upRoll < 90 ? 100 : (upRoll < 99 ? 300 : 600));
+   }
+   
+   currentPoint += pointUwanose;
+   serifuHTML = `<br><div style="color:#ff5722; font-size:22px; font-weight:bold;">🔥 特化ゾーン上乗せ: +${pointUwanose}pt！</div>`;
+   soundUwanose告知();
+
+   if (tokkaRemainingG === 0) {
+    serifuHTML += `<br><div style="color:#ff5722;">特化ゾーン終了！通常へ戻ります。</div>`;
+   }
+  } 
+  // 2. 特化ゾーン前兆処理
+  else if (tokkaZenchoRemaining > 0) {
+   tokkaZenchoRemaining--;
+   serifuHTML = `<br><div style="color:#ff9800;">「修行の成果を見せる時が来たか…！？」</div>`;
+   if (tokkaZenchoRemaining === 0) {
+    if (isTokkaZenchoHit) {
+     tokkaRemainingG = 3; // 特化ゾーン突入
+     serifuHTML = `<br><div style="color:#ff5722; font-size:20px; font-weight:bold;">🎉 ポイント上乗せ特化ゾーン突入!! 🎉</div>`;
+     soundUwanose告知();
+    } else {
+     serifuHTML = `<br><div style="color:#7f8c8d;">（気のせいだったようだ…）</div>`;
+    }
+   }
+  }
+  // 3. 通常の規定pt解除前兆処理
+  else if (zenchoRemaining > 0) {
    zenchoRemaining--;
    
    if (zenchoRemaining === 0) {
     if (isZenchoHit) {
      isBonusReadyG = true;
-     let reachedCeiling = (normalGames >= maxCeilingG);
-     if (reachedCeiling) pbTrigger契機 = "天井到達";
-
-     if (isStrongCherryDirectAt || pbThroughCount >= 3) {
-      isStrongCherryDirectAt = false; nextBonusType = "AT";
-     } else {
-      if (Math.random() < 0.10) { nextBonusType = "AT"; } else { nextBonusType = "PB"; }
-     }
+     nextBonusType = "PB"; // 本前兆なら確定画面へ（1:9振り分けへ流す）
      payMsgHTML += `<br><span style="color:#00e676; font-weight:bold;">🎰 ボーナス確定！レバーを叩いて図柄を揃えろ！ 🎰</span>`;
      soundBonusReady();
     } else {
@@ -929,6 +936,65 @@ function playSlot(isViaSkip) {
     if (doAori) {
      serifuHTML = generateSerifuHTML(isZenchoHit);
     }
+   }
+  }
+  // 4. 前兆中・特化ゾーン中以外の通常時毎ゲームポイント加算・抽選判定
+  else {
+   currentPoint++; // 1Gごとに1ポイント加算
+
+   // 強チェリーの3%AT直撃（即前兆）
+   if (roleName === "強チェリー" && Math.random() < 0.03) {
+    isStrongCherryDirectAt = true; isZenchoHit = true; pbTrigger契機 = "強チェリー直撃";
+    zenchoRemaining = Math.floor(Math.random() * 5) + 4;
+    zenchoLevel = 3; 
+    addSlotHistory(`通常時 強チェリーからAT直撃前兆へ！`);
+   } 
+   // ポイント上乗せ特化ゾーン移行抽選
+   else if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
+    let tokkaProb = (roleName === "弱スイカ") ? 0.03 : (roleName === "弱チェリー" ? 0.10 : (roleName === "強スイカ" ? 0.33 : 0.40));
+    let hitTokka = (Math.random() < tokkaProb);
+    
+    if (hitTokka) {
+     tokkaZenchoRemaining = 3; isTokkaZenchoHit = true; pbTrigger契機 = roleName;
+    } else if (Math.random() < 0.50) {
+     tokkaZenchoRemaining = 3; isTokkaZenchoHit = false; // ガセ特化前兆
+    }
+   }
+   // 100pt刻みゾーン・天井到達による規定pt前兆判定
+   else {
+    let reachPointZone = (currentPoint % 100 === 0);
+    let reachCeiling = (currentPoint >= targetPoint);
+
+    if (reachCeiling) {
+     zenchoRemaining = Math.floor(Math.random() * 7) + 6; isZenchoHit = true; pbTrigger契機 = "規定ポイント到達";
+     zenchoLevel = 3;
+    } else if (reachPointZone) {
+     zenchoRemaining = Math.floor(Math.random() * 7) + 6; 
+     // 実際に内部の規定ptに合致しているか判定
+     isZenchoHit = (currentPoint === targetPoint);
+     zenchoLevel = isZenchoHit ? 2 : 1;
+    }
+   }
+  }
+
+  // 特化ゾーン中などで規定ptをぶち抜いた場合の即時前兆書き換え
+  if (currentPoint >= targetPoint && zenchoRemaining === 0 && tokkaRemainingG === 0 && tokkaZenchoRemaining === 0) {
+   zenchoRemaining = Math.floor(Math.random() * 7) + 6; isZenchoHit = true; pbTrigger契機 = "規定ポイント到達";
+   zenchoLevel = 3;
+  }
+
+  // 引き戻しゾーンの判定
+  if (isHikimodoshiMode && hasHikimodoshi権利) {
+   hikimodoshiGames++;
+   let isHikimodoshiHit = (hikimodoshiGames < 32 && Math.random() < (1 / 32)) || (hikimodoshiGames >= 32);
+   if (isHikimodoshiHit) {
+    isHikimodoshiMode = false; hasHikimodoshi権利 = false; hikimodoshiGames = 0; nextBonusType = "AT"; isBonusReadyG = true;
+    document.getElementById("msgDisplay").innerHTML = `<div>引き戻し成功！図柄を揃えろ！ [±0枚]</div>`;
+    soundBonusReady(); return;
+   }
+  } else {
+   if (normalGames === 32 && zenchoRemaining === 0 && hasHikimodoshi権利) {
+    hasHikimodoshi権利 = false; addSlotHistory(`32G到達 ➔ 引き戻しはありませんでした。`); payMsgHTML += `<br><span style="color:#bbb; font-size:14px;">（引き戻しはなかった……通常モードへ）</span>`;
    }
   }
 
@@ -964,8 +1030,10 @@ function playSlot(isViaSkip) {
     payMsgHTML += `<br><span style="color:#00e676; font-size:22px; font-weight:bold;">🔥 ガチ復活!! レア役引き戻し成功！(+150枚) 🔥</span>`;
     soundBonusStart();
    } else {
-    currentMode = "NORMAL"; normalGames = 0; lastCalculatedGain = netSamai - bonusStartSamaiG; hasHikimodoshi権利 = true; isHikimodoshiMode = (Math.random() < 0.15);
+    currentMode = "NORMAL"; normalGames = 0; lastCalculatedGain = netSamai - bonusStartSamai; hasHikimodoshi権利 = true; isHikimodoshiMode = (Math.random() < 0.15);
     payMsgHTML = `<div>${payMsgHTML}</div><br><span style="color:#795548; font-size:20px;">📊 AT終了 📊<br>最終獲得：${lastCalculatedGain}枚</span>`;
+    addSlotHistory(`AT終了：最終獲得 ${lastCalculatedGain}枚 (通常へ転落)`);
+    lotteryNextModeAndPoint(); // モード再抽選
     soundBonusEnd();
    }
    document.getElementById("msgDisplay").innerHTML = payMsgHTML;
@@ -985,8 +1053,10 @@ function playSlot(isViaSkip) {
      payMsgHTML += `<br><span style="color:#00e676; font-size:22px; font-weight:bold;">🔥 ガチ復活!! レア役引き戻し成功！(+150枚) 🔥</span>`;
      soundBonusStart();
     } else {
-     currentMode = "NORMAL"; normalGames = 0; lastCalculatedGain = netSamai - bonusStartSamaiG; hasHikimodoshi権利 = true; isHikimodoshiMode = (Math.random() < 0.15);
+     currentMode = "NORMAL"; normalGames = 0; lastCalculatedGain = netSamai - bonusStartSamai; hasHikimodoshi権利 = true; isHikimodoshiMode = (Math.random() < 0.15);
      payMsgHTML = `<div>${payMsgHTML}</div><br><span style="color:#795548; font-size:20px;">📊 AT終了 📊<br>最終獲得：${lastCalculatedGain}枚</span>`;
+     addSlotHistory(`AT終了：最終獲得 ${lastCalculatedGain}枚 (0枚スルー転落)`);
+     lotteryNextModeAndPoint(); // モード再抽選
      soundBonusEnd();
     }
     document.getElementById("msgDisplay").innerHTML = payMsgHTML;
@@ -994,7 +1064,7 @@ function playSlot(isViaSkip) {
    }
   }
 
-  /* ★ AT中バトル前兆システム（3〜5G） */
+  /* AT中バトル前兆システム */
   if (battleState === "NONE") {
    atCurrentGames++; 
    let currentRewardHTML = ""; 
@@ -1009,7 +1079,6 @@ function playSlot(isViaSkip) {
    }
    if (uwanoseMedal > 0) { atRemainingMedal += uwanoseMedal; currentRewardHTML = `<div style="color:#00e676; font-weight:bold; font-size:18px;">🎉上乗せ +${uwanoseMedal}枚！</div>`; soundUwanose告知(); }
 
-   // バトルの前兆トリガー判定
    let bAtkProb = (roleName === "弱スイカ") ? 0.03 : (roleName === "弱チェリー" ? 0.0625 : (["強スイカ", "強チェリー"].includes(roleName) ? 0.40 : 0));
    let isBattleWinDraw = (Math.random() < bAtkProb);
    let isTriggeredB = false;
@@ -1022,7 +1091,6 @@ function playSlot(isViaSkip) {
     }
    }
 
-   // 定期ゲーム数バトル天井
    if ([30, 60, 90, 120, 150].includes(atCurrentGames)) {
     if (Math.random() < 0.3) { isTriggeredB = true; isBattleHitMaster = true; } else { isTriggeredB = true; isBattleHitMaster = false; }
    }
