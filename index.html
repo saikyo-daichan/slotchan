@@ -51,7 +51,7 @@ button{cursor:pointer}
  cursor: pointer;
 }
 
-/* ★ 新設：データカウンタースタイル */
+/* --- データカウンターパネル --- */
 .data-counter-panel {
  background: #000;
  border: 2px solid #333;
@@ -178,7 +178,7 @@ button{cursor:pointer}
  transition: background-color 0.3s, color 0.3s;
 }
 
-/* ★スマホ対応：PLAYボタンのみを下部に完全固定 */
+/* スマホ対応：PLAYボタンのみを下部に完全固定 */
 .play-btn-container {
  position: fixed;
  bottom: 0;
@@ -261,7 +261,7 @@ button{cursor:pointer}
 <body>
 
 <div id="slotArea">
- <div class="version-tag">v3.70</div>
+ <div class="version-tag">v3.80</div>
 
  <div class="volume-container">
   <span>🔈 音量:</span>
@@ -269,7 +269,6 @@ button{cursor:pointer}
   <span id="volPercent">40%</span>
  </div>
 
- <!-- ★ 新設：データカウンター（BB/RB） -->
  <div class="data-counter-panel">
   <div class="counter-bb">BB: <span id="countBBDisplay">0</span></div>
   <div class="counter-rb">RB: <span id="countRBDisplay">0</span></div>
@@ -318,7 +317,7 @@ let netSamai = 0;
 let totalInMedals = 0;  
 let totalOutMedals = 0; 
 
-/* ★ 新設：大当り回数カウンター変数 */
+/* 大当り回数カウンター変数 */
 let countBB = 0;
 let countRB = 0;
 
@@ -333,13 +332,10 @@ let pbTrigger契機 = "規定ゲーム数";
 let isPbFinishedG = false; 
 let pbStartSamai = 0;     
 
-/* フラグ関連 */
-let isDirectAtChokugeki = false; 
-let isStrongCherryDirectAt = false; 
-
-/* 告知のネタバレを防ぐための内部フラグ */
+/* 初当たり・直撃フラグ関連 */
 let nextBonusType = ""; 
 let isBonusReadyG = false; 
+let isStrongCherryDirectAt = false; 
 
 /* 引き戻し管理変数 */
 let isHikimodoshiMode = false;   
@@ -467,6 +463,7 @@ function playTone(freq, type, duration, vol = 0.1) {
  } catch(e) {}
 }
 
+// SE定義
 function soundStart() { playTone(240, 'sine', 0.05, 0.2); }
 function soundRare() { playTone(587, 'square', 0.06, 0.3); setTimeout(() => playTone(880, 'square', 0.06, 0.3), 60); setTimeout(() => playTone(1174, 'square', 0.1, 0.4), 120); }
 function soundWinSmall() { playTone(987, 'triangle', 0.08, 0.3); setTimeout(() => playTone(1318, 'triangle', 0.1, 0.3), 80); }
@@ -541,7 +538,6 @@ function updateSlotDisplay() {
  }
  document.getElementById("samaiDisplay").innerHTML = `<span style="color:${samaiColor};">差枚: ${samaiSign}${netSamai}枚</span><br><span style="color:#aaa; font-size:13px;">機械割: ${machineRate.toFixed(2)}%</span>`;
  
- // ★ データカウンターの表示更新
  document.getElementById("countBBDisplay").innerText = countBB;
  document.getElementById("countRBDisplay").innerText = countRB;
 
@@ -554,6 +550,8 @@ function updateSlotDisplay() {
  let hikimodoshiStr = isHikimodoshiMode ? ` [引き戻し中:${hikimodoshiGames}G]` : "";
  normalGEl.innerText = `通常: ${normalGames}G${loopStatusStr}${hikimodoshiStr} [${pbThroughCount}/3スルー]`;
  
+ // ★ ③ 修正：通常時のゾーンや、AT中のいかなる内部抽選でも絶対にSKIPは止まらない。
+ // 本当のボーナス生揃いタイミングである「ボーナス確定画面（isBonusReadyG）」を検知した瞬間のみSKIPを停止させる。
  if (isSkipRunning && isBonusReadyG) {
   stopSkip();
  }
@@ -650,6 +648,7 @@ function getRandomHazureReels() {
 
 /* --- スロット実行メイン --- */
 function playSlot() {
+ // ★ ① 修正：SKIP停止条件を「ボーナス確定画面(isBonusReadyG)」の時のみに完全限定化
  if (isSkipRunning && currentMode !== "NORMAL" && !isBonusReadyG) {
   stopSkip();
   return;
@@ -749,18 +748,22 @@ function playSlot() {
 
  // ================= ②各モードの進行制御 =================
 
- // プチボーナスの14枚ベルが8回になった「次のゲーム」のジャッジ処理
+ // ★ ② 修正：14枚ベルが8回になった「次のレバーON（次ゲーム）」の自動昇格・生揃い割り込み判定
  if (currentMode === "PETIT_BONUS" && isPbFinishedG) {
   isPbFinishedG = false; 
   triggerLock = true;
   
+  let pbGain = netSamai - pbStartSamai;
+  // ★ ② 修正：ジャッジレバー画面を挟まずに、履歴に最終獲得枚数を即時記録！
+  addSlotHistory(`プチボーナス終了（獲得：${pbGain}枚）`);
+
   if (pbAtHit) {
    nextBonusType = "AT";
   } else {
    nextBonusType = "THROUGH"; 
   }
   isBonusReadyG = true; 
-  document.getElementById("msgDisplay").innerHTML = `<div>ジャッジレバー [±0枚]</div><br><span style="color:#fff; font-weight:bold;">🎰 図柄を狙え！運命のレバーオン！ 🎰</span>`;
+  document.getElementById("msgDisplay").innerHTML = `<div>14枚ベルナビ完了 [±0枚]</div><br><span style="color:#fff; font-weight:bold;">🎰 図柄を狙え！運命の生揃いレバーオン！ 🎰</span>`;
   soundBonusReady();
   updateSlotDisplay(); if (triggerLock) lockPlayButton(); return;
  }
@@ -772,9 +775,7 @@ function playSlot() {
   totalOutMedals += 3; 
 
   if (nextBonusType === "AT") {
-   // ★ BBカウンター加算(+1)
    countBB++;
-
    bonusStartSamai = netSamai; 
    document.getElementById("reel1").innerText = "7️⃣";
    document.getElementById("reel2").innerText = "7️⃣";
@@ -799,9 +800,7 @@ function playSlot() {
    soundBonusStart();
   } 
   else if (nextBonusType === "PB") {
-   // ★ RBカウンター加算(+1)
    countRB++;
-
    currentMode = "PETIT_BONUS";
    pbBellCount = 0;
    pbAtHit = false;
@@ -997,7 +996,7 @@ function playSlot() {
 
   if (pbBellCount >= 8) {
    isPbFinishedG = true; 
-   document.getElementById("msgDisplay").innerHTML = `<div>${roleName} [${medalDiffText}]</div><br><span style="color:#ff9800; font-weight:bold;">🏁 ナビ完了！次ゲーム、運命の図柄ジャッジ！</span>`;
+   document.getElementById("msgDisplay").innerHTML = `<div>${roleName} [${medalDiffText}]</div><br><span style="color:#ff9800; font-weight:bold;">🏁 ナビ完了！次ゲーム、運命の図柄生揃いレバー！</span>`;
   } else {
    document.getElementById("msgDisplay").innerHTML = payMsgHTML + `<br><div style="color:#ff9800; font-size:14px;">PB中AT抽選…レバーで狙え！</div>`;
   }
@@ -1011,9 +1010,7 @@ function playSlot() {
    battleFailedGraceG = false;
    
    if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
-    // ★ レア役復活時はさらにBBカウント加算(+1)
     countBB++;
-
     atRemainingMedal = 150; 
     battleState = "NONE";
     wasZeroMedalLastG = false;
@@ -1062,9 +1059,7 @@ function playSlot() {
     atRemainingMedal = 0; 
    } else {
     if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
-     // ★ 0枚目レア役復活時もBB加算(+1)
      countBB++;
-
      atRemainingMedal = 150; 
      battleState = "NONE";
      document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#00e676; font-size:22px; font-weight:bold;">🔥 ガチ復活!! 0枚目のレバーでレア役引き戻し成功！(+150枚) 🔥</span>`;
@@ -1229,8 +1224,6 @@ function playSlot() {
   /* --- 報酬告知画面 --- */
   } else if (battleState === "REWARD") {
    battleState = "NONE";
-   
-   // ★ 修正点：バトルで敵の撃破に成功したため、BBカウンターをさらに+1加算！
    countBB++;
 
    let rewardMedal = 0;
@@ -1266,7 +1259,6 @@ function playSlot() {
    addSlotHistory(`バトル勝利(${enemyType}) → +${rewardMedal}枚獲得[BBカウント追加]`);
    soundUwanose告知();
    
-   // ★ 前回のコードバグ(タイポ)箇所を完全に修復！
    document.getElementById("msgDisplay").innerHTML = payMsgHTML + bSerifuHTML;
   }
  }
