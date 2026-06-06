@@ -261,7 +261,7 @@ button{cursor:pointer}
 <body>
 
 <div id="slotArea">
- <div class="version-tag">v3.94</div>
+ <div class="version-tag">v3.95</div>
 
  <div class="volume-container">
   <span>🔈 音量:</span>
@@ -608,13 +608,14 @@ function updateSlotDisplay() {
  }
 }
 
+/* --- スロット実行メイン --- */
 function playSlot() {
  if (isSkipRunning && currentMode !== "NORMAL" && !isBonusReadyG) {
   stopSkip();
   return;
  }
 
- // プチボーナスが8回引き終わった状態（isPbFinishedG）なら、最優先で大当り確定画面（生揃い準備）へ飛ばす
+ // ★ プチボーナスが8回引き終わった状態（isPbFinishedG）なら最優先で生揃い画面へシフト
  if (currentMode === "PETIT_BONUS" && isPbFinishedG) {
   isPbFinishedG = false; 
   let triggerLock = true;
@@ -635,6 +636,7 @@ function playSlot() {
  }
 
  // メダル消費判定
+ let triggerLock = false;
  if (isReplayG) {
   isReplayG = false; 
   totalInMedals += 3; 
@@ -688,7 +690,6 @@ function playSlot() {
 
  let payout = 0;
  let medalDiffText = "-3枚"; 
- let triggerLock = false;
 
  if (roleName === "リプレイ") { isReplayG = true; }
 
@@ -721,10 +722,10 @@ function playSlot() {
  if (lastWasWeakRare && (roleName === "強スイカ" || roleName === "強チェリー")) { comboHit = true; }
  lastWasWeakRare = (roleName === "弱スイカ" || roleName === "弱チェリー");
 
- // 図柄を揃えるゲーム（isBonusReadyG）
+ // 図柄を揃える確定演出ゲーム（isBonusReadyG）
  if (isBonusReadyG) {
   isBonusReadyG = false; 
-  let triggerLock = true;
+  triggerLock = true;
   totalOutMedals += 3; 
 
   if (nextBonusType === "AT") {
@@ -781,8 +782,7 @@ function playSlot() {
    soundBonusEnd();
   }
   updateSlotDisplay(); if (triggerLock) lockPlayButton(); return;
- }
-
+  }
 
  /* --- B. 通常モード --- */
  if (currentMode === "NORMAL") {
@@ -818,7 +818,7 @@ function playSlot() {
     
     nextBonusType = "AT";
     isBonusReadyG = true;
-    let triggerLock = true;
+    triggerLock = true;
     
     document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#00e676; font-weight:bold;">🎉 歓喜!! 引き戻し成功！図柄を揃えろ！ 🎉</span>`;
     addSlotHistory(`通常 ${normalGames}G ➔ 引き戻し成功！メインAT復帰！`);
@@ -871,7 +871,7 @@ function playSlot() {
   }
 
   if (zenchoRemaining > 0 && zenchoRemaining - 1 === 0 && isZenchoHit) {
-   let triggerLock = true;
+   triggerLock = true;
    zenchoRemaining = 0;
    isHikimodoshiMode = false; 
    hikimodoshiGames = 0;
@@ -1129,7 +1129,6 @@ function playSlot() {
     } else if (roleName === "弱スイカ") {
      if (dmgRoll < 33) dmg = 5; else if (dmgRoll < 66) dmg = 10; else if (dmgRoll < 99) dmg = 20; else dmg = 30;
     } else if (roleName === "弱チェリー") {
-     // ★ ここに入っていた謎の「dashed」タイポを完璧にクレンジング！
      if (dmgRoll < 70) dmg = 10; else if (dmgRoll < 90) dmg = 20; else if (dmgRoll < 97) dmg = 30; else dmg = 50;
     } else if (roleName === "強スイカ") {
      if (dmgRoll < 66) dmg = 20; else if (dmgRoll < 77) dmg = 30; else if (dmgRoll < 88) dmg = 40; else dmg = 50;
