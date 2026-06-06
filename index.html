@@ -197,7 +197,7 @@ button{cursor:pointer}
 <body>
 
 <div id="slotArea">
- <div class="version-tag">v3.30</div>
+ <div class="version-tag">v3.31</div>
 
  <div class="slot-header">
   <div class="header-buttons">
@@ -249,13 +249,12 @@ let pbTrigger契機 = "規定ゲーム数";
 let isPbFinishedG = false; 
 
 /* v3.20 新設フラグ */
-let isPbReadyG = false;       
 let isDirectAtChokugeki = false; 
 let isStrongCherryDirectAt = false; 
 
-/* ★ v3.30 新設：引き戻し管理変数 */
-let isHikimodoshiMode = false;   // 15%の引き戻し状態に滞在しているか
-let hikimodoshiGames = 0;        // 引き戻し状態に入ってからのカウント（最大32G）
+/* 引き戻し管理変数 */
+let isHikimodoshiMode = false;   
+let hikimodoshiGames = 0;        
 
 /* AT中の管理変数 */
 let atRemainingMedal = 0; 
@@ -482,7 +481,9 @@ function updateSlotDisplay() {
   totalBBEl.style.display = "block";
   document.getElementById("mainPlayBtn").innerText = "PLAY";
 
-  let showQuestionMedal = (battleState !== "NONE" || battleFailedGraceG);
+  // ★ 修正点①：枚数が1枚以上あるときはいかなる場合も絶対に数値を表示！
+  // 「ベースの残り枚数が0枚」かつ「バトル中または前兆中」の時だけ「LAST ?枚」にする。
+  let showQuestionMedal = (atRemainingMedal <= 0 && (battleState !== "NONE" || battleFailedGraceG));
   let medalDisplayStr = showQuestionMedal ? "LAST ?枚" : `LAST ${atRemainingMedal}枚`;
 
   if (battleFailedGraceG) {
@@ -625,7 +626,7 @@ function playSlot() {
  
  netSamai += payout; 
 
- // AT（BIG）中の差枚数計算
+ // AT（BIG）中の差枚数管理
  if (currentMode === "BIG" && currentMode !== "BONUS_READY" && !battleFailedGraceG) {
   if (roleName === "リプレイ") {
    // 現状維持
@@ -683,11 +684,10 @@ function playSlot() {
   updateSlotDisplay(); if (triggerLock) lockPlayButton(); return;
  }
 
- /* ★ v3.30 新設：ATリザルト画面（1Gガチ復活抽選） */
+ /* ★ 修正点②：リザルト画面のレバーON（RESULTモード） */
  if (currentMode === "RESULT") {
   triggerLock = true;
   
-  // レア役を引いていれば＋150枚でAT即復帰（内部G数引き継ぎ）
   if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
    currentMode = "BIG";
    atRemainingMedal = 150; 
@@ -698,7 +698,7 @@ function playSlot() {
    addSlotHistory(`リザルト画面からレア役復活！[契機:${roleName}]`);
    soundBonusStart();
   } else {
-   // レア役を引けなかった場合は通常時（0G）へ落とす ＆ 15%で引き戻しモード抽選
+   // レア役を引けなかった場合は「余分な1Gを追加せず」このゲームで通常時（0G）へ移行完了させる
    currentMode = "NORMAL";
    normalGames = 0;
    
@@ -722,21 +722,18 @@ function playSlot() {
  if (currentMode === "NORMAL") {
   normalGames++;
   
-  // ★ v3.30 新設：引き戻し滞在時の毎ゲームガチ抽選処理
   if (isHikimodoshiMode) {
    hikimodoshiGames++;
    
-   // 1〜31Gの間は 1/32 で即時告知抽選
    let isHikimodoshiHit = (hikimodoshiGames < 32 && Math.random() < (1 / 32));
-   // 32G目に到達した場合は100%確定で天井告知
    if (hikimodoshiGames >= 32) {
     isHikimodoshiHit = true;
    }
    
    if (isHikimodoshiHit) {
-    isHikimodoshiMode = false; // モード終了
+    isHikimodoshiMode = false; 
     hikimodoshiGames = 0;
-    currentMode = "BONUS_READY"; // 内部G数をリセットして150枚のATに即復帰
+    currentMode = "BONUS_READY"; 
     triggerLock = true;
     document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#00e676; font-weight:bold;">🎉 歓喜!! 引き戻しゾーンからAT復帰確定!! 🎉</span>`;
     addSlotHistory(`通常 ${normalGames}G ➔ 引き戻し成功！メインAT復帰！`);
@@ -777,7 +774,8 @@ function playSlot() {
   if (isTargetGame && zenchoRemaining === 0) {
    let gRoll = Math.random();
    let gProb = 0;
-   if (normalGames === 50) gProb = 0.07;
+   // ★ 修正点③：50Gでの解除期待度をきっちり指示通りの「12.5%」に引き下げ！重複当選のすり抜けを防止
+   if (normalGames === 50) gProb = 0.125; 
    else if (normalGames === 100) gProb = 0.33;
    else if (normalGames === 150) gProb = 0.125;
    else if (normalGames === 200) gProb = 0.50; 
@@ -795,7 +793,7 @@ function playSlot() {
    
    triggerLock = true;
    zenchoRemaining = 0;
-   isHikimodoshiMode = false; // 通常当たり時は引き戻しカウントクリア
+   isHikimodoshiMode = false; 
    hikimodoshiGames = 0;
    
    let reachedCeiling = (normalGames >= maxCeilingG);
@@ -895,7 +893,7 @@ function playSlot() {
   wasZeroMedalLastG = false; 
   pbThroughCount = 0; 
   isBattle1G連Loop = false; 
-  isHikimodoshiMode = false; // 引き戻しフラグ完全初期化
+  isHikimodoshiMode = false; 
   hikimodoshiGames = 0;
   
   document.getElementById("msgDisplay").innerHTML = `<div>777揃い [±0枚]</div><br><span style="color:#e91e63; font-size:20px;">🔴 BIG BONUS(AT) 150枚スタート！</span>`;
@@ -906,7 +904,7 @@ function playSlot() {
  } else if (currentMode === "BIG") {
   totalBigGames++;
 
-  // ★ ② 修正：泣きのラスト1G消化後の移行先を「救済判定」ではなく直接「ATリザルト画面（RESULTモード）」に叩き込む
+  // ★ 修正点②：泣きのラスト1G消化後は無駄なウェイトを挟まず直接RESULTモード（リザルト画面）へ
   if (battleFailedGraceG) {
    battleFailedGraceG = false;
    currentMode = "RESULT";
@@ -921,11 +919,10 @@ function playSlot() {
    bZenchoRemaining = 1; 
   }
 
-  // ★ ② 修正：バトル非発生かつ通常AT中に残り0枚に到達した「次のレバーON」の判定処理
+  // 通常AT中に残り0枚に到達した「次のレバーON」の判定
   if (wasZeroMedalLastG && battleState === "NONE") {
    wasZeroMedalLastG = false; 
    
-   // 残り0枚の次Gレバーオンでのバトル前兆・または即リザルト移行判定
    let bAtkProb = 0;
    if (roleName === "弱スイカ") bAtkProb = 0.03;
    else if (roleName === "弱チェリー") bAtkProb = 0.0625;
@@ -1008,7 +1005,6 @@ function playSlot() {
     atCurrentGames = 0; 
    }
 
-   // ★ ① 修正：バトルも前兆も入っていない状態で残り0枚以下になった場合、フラグを立てて「次のレバーON」へ。
    if (atRemainingMedal <= 0) {
     atRemainingMedal = 0;
     if (battleState === "NONE") {
@@ -1104,7 +1100,7 @@ function playSlot() {
 
    if (enemyType !== "ゴッデス") {
     if (isBattle1G連Loop) {
-     // ループ
+     // ループ継続
     } else if (Math.random() < 0.10) {
      isBattle1G連Loop = true; 
     }
