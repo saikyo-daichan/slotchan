@@ -261,7 +261,7 @@ button{cursor:pointer}
 <body>
 
 <div id="slotArea">
- <div class="version-tag">v4.02</div>
+ <div class="version-tag">v4.03</div>
 
  <div class="volume-container">
   <span>🔈 音量:</span>
@@ -603,47 +603,9 @@ function updateSlotDisplay() {
  }
 }
 
-function getSerifuEffect(isHit) {
- let text = "「……レバーを叩くんだ！」";
- let isRed = false; 
- let seed = Math.random();
-
- if (isHit) {
-  if (seed < 0.05) {
-   let r = Math.random();
-   if (r < 0.5) text = "「あっつい！あっつい！」";
-   else text = "「このあとチャンスだぞ！」";
-   isRed = true;
-  } else {
-   let r = Math.random();
-   if (r < 0.3) text = "激アツ「何かが起きる予感……！」";
-   else if (r < 0.6) text = "「気配を感じる……。」";
-   else if (r < 0.8) text = "「諦めるのはまだ早いぞ！」";
-   else text = "「神の領域へ……！？」";
-  }
- } else {
-  let r = Math.random();
-  if (r < 0.3) text = "「何かが起きる予感……！気配上昇か！？」";
-  else if (r < 0.6) text = "「気配を感じる……。」";
-  else text = "「……静かだな。」";
- }
-
- return isRed ? `<span class="red-serif">${text}</span>` : `<span>${text}</span>`;
-}
-
-function getRandomHazureReels() {
- const hazurePatterns = [
-  ["🍒", "🍉", "🔔"], ["🍉", "🔔", "🍒"], ["🔔", "🍒", "🍉"], ["🔄", "🍒", "🔔"], ["🟡", "🍉", "🔄"],
-  ["🍒", "🔄", "🍉"], ["🍉", "🟡", "🔔"], ["🔔", "🔄", "🍒"], ["🔄", "🍉", "🟡"], ["🟡", "🍒", "🔄"]
- ];
- return hazurePatterns[Math.floor(Math.random() * hazurePatterns.length)];
-}
-
 /* --- スロット実行メイン --- */
 function playSlot(isViaSkip) {
- initAudio();
- 
- // プチボーナスが8回引き終わった状態（isPbFinishedG）なら最優先で確定画面に移行させて脱出させる
+ // ★ ② 修正：14枚ベル8回引き終わった状態（isPbFinishedG）なら、余計な待機画面を挟まずダイレクトに生揃いジャッジ画面(isBonusReadyG)へ直行させる！
  if (currentMode === "PETIT_BONUS" && isPbFinishedG) {
   isPbFinishedG = false; 
   if (pbAtHit) {
@@ -652,7 +614,7 @@ function playSlot(isViaSkip) {
    nextBonusType = "THROUGH"; 
   }
   isBonusReadyG = true; 
-  document.getElementById("msgDisplay").innerHTML = `<div>レバーオン！ [±0枚]</div><br><span style="color:#fff; font-weight:bold;">🎰 図柄を狙え！運命の生揃いレバーオン！ 🎰</span>`;
+  document.getElementById("msgDisplay").innerHTML = `<div>レバーオンしろ！ [±0枚]</div><br><span style="color:#fff; font-weight:bold;">🎰 図柄を狙え！運命の生揃いレバーオン！ 🎰</span>`;
   soundBonusReady();
   updateSlotDisplay();
   return;
@@ -714,6 +676,7 @@ function playSlot(isViaSkip) {
  document.getElementById("reel2").innerText = reelStr[1];
  document.getElementById("reel3").innerText = reelStr[2];
 
+ // 払い出し枚数マッピング
  let payout = 0;
  let medalDiffText = "-3枚"; 
 
@@ -743,7 +706,7 @@ function playSlot(isViaSkip) {
  if (lastWasWeakRare && (roleName === "強スイカ" || roleName === "強チェリー")) { comboHit = true; }
  lastWasWeakRare = (roleName === "弱スイカ" || roleName === "弱チェリー");
 
- // 図柄を揃えるゲーム（isBonusReadyG）
+ // ★ ① 修正：図柄を実際に揃える（isBonusReadyG）このゲームで「初めて履歴リストへ書き込み」を行う！
  if (isBonusReadyG) {
   isBonusReadyG = false; 
   totalOutMedals += 3; 
@@ -770,6 +733,9 @@ function playSlot(isViaSkip) {
    hasHikimodoshi権利 = false;
    
    payMsgHTML = `<div>777揃い [±0枚]</div><br><span style="color:#e91e63; font-size:20px;">🔴 BIG BONUS(AT) 150枚スタート！</span>`;
+   
+   // 図柄が揃ったここで当選履歴を書き込む
+   addSlotHistory(`${normalGames}G → メメインAT突入！[契機:${pbTrigger契機}]`);
    soundBonusStart();
   } 
   else if (nextBonusType === "PB") {
@@ -784,6 +750,9 @@ function playSlot(isViaSkip) {
    document.getElementById("reel2").innerText = "7️⃣";
    document.getElementById("reel3").innerText = "🧭"; 
    payMsgHTML = `<div>77BAR揃い [±0枚]</div><br><span style="color:#ff9800; font-weight:bold;">🟢 プチボーナス開始！(14枚ベル8回で終了) 🟢</span>`;
+   
+   // 図柄が揃ったここで当選履歴を書き込む
+   addSlotHistory(`${normalGames}G → プチボーナス突入！[契機:${pbTrigger契機}]`);
    soundBonusStart();
   }
   else if (nextBonusType === "THROUGH") {
@@ -819,6 +788,7 @@ function playSlot(isViaSkip) {
 
   let rareHit = (Math.random() < pbProb);
 
+  // ★ ① 修正：レア役で直撃・PB前兆が刺さった瞬間に契機を即保存（履歴への先行書き込みはナシ）
   if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName) && rareHit && zenchoRemaining === 0) {
    pbTrigger契機 = roleName;
    isZenchoHit = true;
@@ -840,9 +810,9 @@ function playSlot(isViaSkip) {
     
     nextBonusType = "AT";
     isBonusReadyG = true;
+    pbTrigger契機 = "引き戻しゾーン"; // 契機を上書き保存
     
     document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#00e676; font-weight:bold;">🎉 歓喜!! 引き戻し成功！図柄を揃えろ！ 🎉</span>`;
-    addSlotHistory(`通常 ${normalGames}G ➔ 引き戻し成功！メインAT復帰！`);
     soundBonusReady();
     updateSlotDisplay();
     return;
@@ -866,9 +836,8 @@ function playSlot(isViaSkip) {
    if (Math.random() < 0.03) {
     isStrongCherryDirectAt = true;
     isZenchoHit = true;
-    pbTrigger契機 = "強チェリー(直撃)";
+    pbTrigger契機 = "強チェリー直撃"; // 契機を上書き
     zenchoRemaining = Math.floor(Math.random() * 5) + 4; 
-    addSlotHistory(`通常時 強チェリーからAT直撃前兆へ！`);
    }
   }
 
@@ -903,23 +872,19 @@ function playSlot(isViaSkip) {
    if (isStrongCherryDirectAt || pbThroughCount >= 3) {
     isStrongCherryDirectAt = false; 
     nextBonusType = "AT";
-    addSlotHistory(`${normalGames}G → AT突入！[契機:${pbTrigger契機}]`);
    } 
    else {
     if (Math.random() < 0.10) {
      nextBonusType = "AT";
-     addSlotHistory(`${normalGames}G → 1:9振り分け突破でAT直行！`);
     } else {
      nextBonusType = "PB";
      if (reachedCeiling && !isCeilingShortened && maxCeilingG === 300) {
       isCeilingShortened = true;
-      addSlotHistory(`${normalGames}G → 最深天井到達！次回天井を200Gに短縮！`);
      }
-     addSlotHistory(`${normalGames}G → プチボーナス確定！[契機:${pbTrigger契機}]`);
     }
    }
    
-   payMsgHTML += `<br><span style="color:#00e676; font-weight:bold;">🎰 ボーナス確定！レバーを叩いて図柄を揃えろ！ 🎰</span>`;
+   document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#00e676; font-weight:bold;">🎰 ボーナス確定！レバーを叩いて図柄を揃えろ！ 🎰</span>`;
    soundBonusReady(); 
   }
 
@@ -946,15 +911,15 @@ function playSlot(isViaSkip) {
    addSlotHistory(`PB中 内部AT当選確定！`);
   }
 
+  // ★ ② 修正：ナビがちょうど8回(pbBellCount >= 8)になったゲームは、最後の14枚払い出し演出を最優先で表示し、次ゲームに移行するフラグを立てる
   if (pbBellCount >= 8) {
    isPbFinishedG = true; 
    let pbGain = netSamai - pbStartSamai;
    addSlotHistory(`プチボーナス終了（獲得：${pbGain}枚）`);
-   payMsgHTML += `<br><span style="color:#ff9800; font-weight:bold;">🏁 ナビ完了！次ゲーム、運命の図柄生揃いレバー！</span>`;
+   document.getElementById("msgDisplay").innerHTML = `<div>${roleName} [${medalDiffText}]</div><br><span style="color:#ff9800; font-weight:bold;">🏁 ナビ完了！レバーを叩け！</span>`;
   } else {
-   payMsgHTML += `<br><div style="color:#ff9800; font-size:14px;">PB中AT抽選…レバーで狙え！</div>`;
+   document.getElementById("msgDisplay").innerHTML = payMsgHTML + `<br><div style="color:#ff9800; font-size:14px;">PB中AT抽選…レバーで狙え！</div>`;
   }
-  document.getElementById("msgDisplay").innerHTML = payMsgHTML;
 
  /* ================= BIG BONUS (AT) ================= */
  } else if (currentMode === "BIG") {
