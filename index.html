@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>最強スロットシミュレーター</title>
 <style>
-body{font-family:sans-serif;max-width:700px;margin:auto;padding:20px;padding-bottom:100px;background-color:#121212;color:#fff;}
+body{font-family:sans-serif;max-width:700px;margin:auto;padding:20px;padding-bottom:120px;background-color:#121212;color:#fff;}
 input,select,button{width:100%;padding:12px;margin-bottom:10px;box-sizing:border-box}
 button{cursor:pointer}
 .hidden{display:none}
@@ -83,7 +83,7 @@ button{cursor:pointer}
  font-size: 18px;
  font-weight: bold;
  color: #3f51b5;
- min-height: 80px; 
+ min-height: 100px; 
  box-sizing: border-box;
  margin-bottom: 10px;
  background: #e8eaf6;
@@ -97,7 +97,7 @@ button{cursor:pointer}
  transition: background-color 0.3s, color 0.3s;
 }
 
-/* ★スマホ対応：PLAYボタンを下部にガチガチの完全固定 */
+/* ★スマホ対応：PLAY・SKIPボタンを下部に完全固定 */
 .play-btn-container {
  position: fixed;
  bottom: 0;
@@ -109,6 +109,7 @@ button{cursor:pointer}
  border-top: 2px solid #444;
  z-index: 9999;
  display: flex;
+ gap: 10px;
  justify-content: center;
 }
 .play-btn {
@@ -119,12 +120,23 @@ button{cursor:pointer}
  font-weight: bold;
  border-radius: 8px;
  padding: 15px;
- width: 100%;
- max-width: 660px;
+ flex: 2;
  box-shadow: 0 4px 6px rgba(0,0,0,0.2);
  -webkit-tap-highlight-color: transparent;
 }
-.play-btn:disabled {
+.skip-btn {
+ background-color: #ff9800;
+ color: white;
+ border: none;
+ font-size: 20px;
+ font-weight: bold;
+ border-radius: 8px;
+ padding: 15px;
+ flex: 1;
+ box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+ -webkit-tap-highlight-color: transparent;
+}
+.play-btn:disabled, .skip-btn:disabled {
  background-color: #757575 !important;
  color: #b0bec5 !important;
  cursor: not-allowed;
@@ -190,7 +202,7 @@ button{cursor:pointer}
   <div id="slotState" class="status-state">状態: 通常モード</div>
   <div class="status-item" id="normalGameCount">通常: 0G</div>
   <div class="status-item" id="subGameCount"></div>
-  <div class="status-item" id="totalBonusGameCount" style="display:none;">累計BB: 0G</div>
+  <div class="status-item" id="totalBonusGameCount" style="display:none;">累計AT: 0G</div>
  </div>
 
  <div id="slotReelsContainer" class="reels">
@@ -203,6 +215,7 @@ button{cursor:pointer}
  
  <div class="play-btn-container">
   <button id="mainPlayBtn" class="play-btn" onclick="playSlot()">PLAY (-3枚)</button>
+  <button id="mainSkipBtn" class="skip-btn" onclick="toggleSkip()">SKIP</button>
  </div>
  
  <div class="slot-history-box">
@@ -221,37 +234,35 @@ const YEN_PER_MEDAL = 21.73913043478261;
 let currentMode = "NORMAL"; 
 let normalGames = 0;
 let czRemaining = 0;
-let bigRemaining = 0;
-let totalBigGames = 0;
-let nextBonusType = "777"; 
+
+/* AT中の管理変数 */
+let atRemainingMedal = 0; 
+let totalBigGames = 0;     
+let atCurrentGames = 0;    
 
 let bonusStartSamai = 0; 
 let lastCalculatedGain = 0; 
 
-let internalMode = 1; 
-const MODE_NAMES = ["低確", "通常", "高確", "超高確"];
-
-let isLoopMode = false;
-let triggeredBy300G = false; 
+/* 天井短縮フラグ */
+let isCeilingShortened = false; 
 
 let zenchoRemaining = 0;   
 let isZenchoHit = false;    
-let zenchoTriggerSource = ""; 
 let nextSerifuInterval = 0; 
 
-/* --- BIG中 変数 --- */
-let bigBattleGames = 0;       
-let bZenchoRemaining = 0;     
-let battleState = "NONE";     
-let battleCount = 0;          
-let enemyType = "";           
-let isBattleWin = false;      
-let isBZenchoHitActual = false; 
+/* --- バトルの変数管理 --- */
+let battleState = "NONE"; 
+let bZenchoRemaining = 0;
 
-/* --- 引き戻しシステム用変数 --- */
-let hasHikimodoshi = false;      
-let isHikimodoshiZon = false;    
-let hikimodoshiGameCount = 0;    
+let enemyType = "";
+let enemyMaxHP = 0;
+let enemyHP = 0;
+let battleLimitG = 0;
+let battleCount = 0;
+let isGoddesLoop = false; 
+
+/* ★コンボシステム */
+let lastWasWeakRare = false;
 
 /* ★リプレイ次ゲーム遊技管理フラグ */
 let isReplayG = false;
@@ -259,7 +270,9 @@ let isReplayG = false;
 /* ★サウンドマスターON/OFF制御フラグ */
 let isSoundEnabled = true;
 
-let slotHistories = [];
+/* ★SKIP（自動遊技）管理タイマー */
+let skipTimer = null;
+let isSkipRunning = false;
 
 window.onload = () => {
  updateSlotDisplay();
@@ -272,13 +285,12 @@ function addSlotHistory(text) {
  if (historyEl) {
   historyEl.innerHTML = slotHistories.map(h => `<div>${h}</div>`).join("");
  }
- // データ解析ツールが裏側で参照できるようにlocalStorageへ常に最新の値を保存
  localStorage.setItem('slot_play_data_sync', JSON.stringify({
   netSamai: netSamai,
   normalGames: normalGames,
   totalBigGames: totalBigGames,
   currentMode: currentMode,
-  internalMode: internalMode,
+  internalMode: 1, 
   slotHistories: slotHistories
  }));
 }
@@ -300,15 +312,9 @@ function toggleSound() {
  if (isSoundEnabled) {
   isSoundEnabled = false;
   if (btn) btn.innerText = "❌ サウンド: OFF";
-  if (audioCtx && audioCtx.state !== 'closed') {
-   audioCtx.resume();
-  }
  } else {
   isSoundEnabled = true;
   if (btn) btn.innerText = "🔊 サウンド: ON";
-  if (audioCtx) {
-   audioCtx.resume();
-  }
   playTone(880, 'sine', 0.1, 0.1);
  }
 }
@@ -330,10 +336,7 @@ function playTone(freq, type, duration, vol = 0.1) {
  } catch(e) {}
 }
 
-function soundStart() { 
- playTone(300, 'sine', 0.05, 0.08); 
- setTimeout(() => playTone(600, 'sine', 0.08, 0.05), 40); 
-}
+function soundStart() { playTone(240, 'sine', 0.05, 0.06); }
 function soundRare() { playTone(587, 'square', 0.06); setTimeout(() => playTone(880, 'square', 0.06), 60); setTimeout(() => playTone(1174, 'square', 0.1), 120); }
 function soundWinSmall() { playTone(987, 'triangle', 0.08); setTimeout(() => playTone(1318, 'triangle', 0.1), 80); }
 function soundBonusEnd() { playTone(200, 'sawtooth', 0.3); }
@@ -358,12 +361,56 @@ function soundBlackout() {
 }
 
 function lockPlayButton() {
+ // SKIP駆動中はロック時間を発生させない
+ if (isSkipRunning) return;
  const btn = document.getElementById("mainPlayBtn");
  if (!btn) return;
  btn.disabled = true;
  setTimeout(() => {
-  btn.disabled = false;
+  if (!isSkipRunning) btn.disabled = false;
  }, 1000);
+}
+
+// 🟢 SKIP（自動遊技）の開始 / 停止切り替え
+function toggleSkip() {
+ initAudio();
+ const skipBtn = document.getElementById("mainSkipBtn");
+ const playBtn = document.getElementById("mainPlayBtn");
+
+ if (isSkipRunning) {
+  // 停止させる
+  stopSkip();
+ } else {
+  // 通常モードかつ前兆中でない場合のみSKIP開始可能（CZ以上に即告知で飛ぶのを防ぐため）
+  if (currentMode !== "NORMAL") {
+   alert("SKIP機能は通常時のみ使用できます。");
+   return;
+  }
+  isSkipRunning = true;
+  skipBtn.innerText = "STOP";
+  skipBtn.style.backgroundColor = "#e53935";
+  playBtn.disabled = true;
+  
+  // 0.6秒ごとに1G回すループを開始
+  skipTimer = setInterval(() => {
+   // ループ内でCZ等に突入したら自動停止
+   if (currentMode !== "NORMAL") {
+    stopSkip();
+    return;
+   }
+   playSlot();
+  }, 600);
+ }
+}
+
+function stopSkip() {
+ if (!isSkipRunning) return;
+ clearInterval(skipTimer);
+ skipTimer = null;
+ isSkipRunning = false;
+ document.getElementById("mainSkipBtn").innerText = "SKIP";
+ document.getElementById("mainSkipBtn").style.backgroundColor = "#ff9800";
+ document.getElementById("mainPlayBtn").disabled = false;
 }
 
 function updateSlotDisplay() {
@@ -379,8 +426,13 @@ function updateSlotDisplay() {
  document.getElementById("slotReelsContainer").classList.remove("blackout-reels");
  document.getElementById("msgDisplay").classList.remove("blackout-msg");
 
- let loopStatusStr = isLoopMode ? " [天国ループ!?]" : "";
+ let loopStatusStr = isCeilingShortened ? " [天井短縮中!!]" : "";
  normalGEl.innerText = `通常: ${normalGames}G${loopStatusStr}`;
+ 
+ // SKIP作動中は非活性にする制御
+ if (!isSkipRunning) {
+  document.getElementById("mainSkipBtn").disabled = (currentMode !== "NORMAL");
+ }
  
  if (currentMode === "NORMAL") {
   stateEl.innerText = "状態: 通常モード";
@@ -398,34 +450,33 @@ function updateSlotDisplay() {
   subGEl.innerText = "狙え! [777]";
   totalBBEl.style.display = "none";
  } else if (currentMode === "BIG") {
-  totalBigGames = Math.max(totalBigGames, 1);
-  totalBBEl.innerText = `累計BB: ${totalBigGames}G`;
+  totalBBEl.innerText = `累計AT: ${totalBigGames}G`;
   totalBBEl.style.display = "block";
 
   let isHold = (battleState !== "NONE");
-  let gameDisplayStr = isHold ? "LAST ?G" : `LAST ${bigRemaining}G`;
+  let medalDisplayStr = isHold ? "LAST ?枚" : `LAST ${atRemainingMedal}枚`;
 
   if (battleState === "NONE") {
-   stateEl.innerText = "状態: 🔴BIG BONUS🔴";
+   stateEl.innerText = "状態: 🔴BIG BONUS(AT)🔴";
    stateEl.style.color = "#e91e63";
-   subGEl.innerHTML = `${gameDisplayStr} <span style="color:#7f8c8d; font-size:14px; margin-left:8px;">(区切り: ${bigBattleGames}G)</span>`;
+   subGEl.innerHTML = `${medalDisplayStr} <span style="color:#7f8c8d; font-size:14px; margin-left:8px;">(AT内G数: ${atCurrentGames}G)</span>`;
   } else if (battleState === "PRE") {
    stateEl.innerText = "状態: 🎬作戦区域(前兆)🎬";
    stateEl.style.color = "#9c27b0";
-   subGEl.innerHTML = `<span style="color:#9c27b0;">G数ホールド中！ (発展まであと ${bZenchoRemaining}G)</span>`;
+   subGEl.innerHTML = `${medalDisplayStr} <span style="color:#9c27b0; font-size:14px; margin-left:8px;">(発展まであと ${bZenchoRemaining}G)</span>`;
   } else if (battleState === "BATTLE") {
    stateEl.innerText = `状態: ⚔️対戦中 vs ${enemyType}⚔️`;
    stateEl.style.color = "#ff9800";
-   subGEl.innerHTML = `<span style="color:#ff9800; font-size:16px;">G数ホールド中！ バトル ${battleCount}/3 G目</span>`;
+   subGEl.innerHTML = `<span style="color:#ff9800; font-size:16px;">${medalDisplayStr} (敵HP: ${enemyHP}/${enemyMaxHP}) バトル残り: ${battleLimitG - battleCount}G</span>`;
   } else if (battleState === "REWARD") {
-   stateEl.innerText = "状態: 👑報酬告知ホールド👑";
+   stateEl.innerText = "状態: 👑報酬告知👑";
    stateEl.style.color = "#00e676";
-   subGEl.innerHTML = `<span style="color:#00e676; font-size:16px;">G数ホールド中！ 運命のレバーオン！</span>`;
+   subGEl.innerHTML = `<span style="color:#00e676; font-size:16px;">${medalDisplayStr} 運命のレバーオン！</span>`;
   }
  }
 }
 
-function getSerifuEffect(isHit, currentModeIndex) {
+function getSerifuEffect(isHit) {
  let text = "「……レバーを叩くんだ！」";
  let isRed = false; 
  let seed = Math.random();
@@ -438,73 +489,84 @@ function getSerifuEffect(isHit, currentModeIndex) {
    isRed = true;
   } else {
    let r = Math.random();
-   if (r < 0.3) text = "「何かが起きる予感……！」";
+   if (r < 0.3) text = "激アツ「何かが起きる予感……！」";
    else if (r < 0.6) text = "「気配を感じる……。」";
    else if (r < 0.8) text = "「諦めるのはまだ早いぞ！」";
    else text = "「神の領域へ……！？」";
   }
  } else {
   let r = Math.random();
-  if (r < 0.3) text = "「何かが起きる予感……！強度アップか！？」";
+  if (r < 0.3) text = "「何かが起きる予感……！気配上昇か！？」";
   else if (r < 0.6) text = "「気配を感じる……。」";
   else text = "「……静かだな。」";
  }
 
- if (isRed) {
-  return `<span class="red-serif">${text}</span>`;
- } else {
-  return `<span>${text}</span>`;
- }
+ return isRed ? `<span class="red-serif">${text}</span>` : `<span>${text}</span>`;
+}
+
+function getRandomHazureReels() {
+ const hazurePatterns = [
+  ["🍒", "🍉", "🔔"], ["🍉", "🔔", "🍒"], ["🔔", "🍒", "🍉"], ["🔄", "🍒", "🔔"], ["🟡", "🍉", "🔄"],
+  ["🍒", "🔄", "🍉"], ["🍉", "🟡", "🔔"], ["🔔", "🔄", "🍒"], ["🔄", "🍉", "🟡"], ["🟡", "🍒", "🔄"]
+ ];
+ return hazurePatterns[Math.floor(Math.random() * hazurePatterns.length)];
 }
 
 /* --- スロット実行メイン --- */
 function playSlot() {
- initAudio(); 
+ // レバーが動作した時点で、SKIP中かつ通常時以外なら即時オート停止
+ if (isSkipRunning && currentMode !== "NORMAL") {
+  stopSkip();
+  return;
+ }
 
- /* リプレイ次ゲーム遊技ロジック */
+ if (currentMode === "RESULT") {
+  currentMode = "NORMAL";
+  normalGames = 0;
+  updateSlotDisplay();
+  document.getElementById("msgDisplay").innerHTML = "<div>レバーを叩け！</div>";
+  return;
+ }
+
  if (isReplayG) {
   isReplayG = false; 
  } else {
   netSamai -= 3; 
- }
- 
- // ================= ①最優先：払い出し＆特殊フラグ抽選 =================
- let randBonusFlags = Math.random();
- let is777揃いフラグ = false;
- let is77ハズレフラグ = false;
-
- if (currentMode === "BIG" && battleState === "NONE") {
-  if (randBonusFlags < 1 / 655) { 
-   is777揃いフラグ = true;
-  } else if (randBonusFlags < (1 / 655) + (1 / 201)) { 
-   is77ハズレフラグ = true;
+  if (currentMode === "BIG" && battleState === "NONE") {
+   atRemainingMedal -= 3; 
   }
  }
-
- let roll = Math.random();
- let roleName = "ハズレ";
- let reelStr = ["🍒", "🍉", "🔔"]; 
  
- let isBonus = (currentMode === "BIG");
- let bell8Prob = (currentMode === "CZ") ? (1 / 3.3) : (isBonus ? (1 / 2.6) : (1 / 22)); 
- let bell3Prob = isBonus ? (1 / 2.6) : (1 / 6);
+ // ================= ①フラグ抽選（1/65536ベース） =================
+ let roll = Math.random() * 65536;
+ let roleName = "ハズレ";
+ let reelStr = getRandomHazureReels(); 
+ 
+ let p_wRepl = 65536 / 7; 
+ let p_bell3 = p_wRepl + (65536 / 7); 
+ let p_bell14 = p_bell3; 
+ let p_bell8 = 0;
 
- let triggerLock = false; 
-
- if (is777揃いフラグ) {
-  roleName = "777揃い";
-  reelStr = ["7️⃣", "7️⃣", "7️⃣"];
-  triggerLock = true; 
- } else if (is77ハズレフラグ) {
-  roleName = "ハズレ"; 
-  reelStr = ["7️⃣", "7️⃣", "🦧"]; 
+ if (currentMode === "BIG") {
+  p_bell14 = p_bell3 + (65536 / 5);
+  p_bell8 = p_bell14 + (65536 / 22);
  } else {
-  if (roll < 1/7) { roleName = "リプレイ"; reelStr = ["🔄", "🔄", "🔄"]; } 
-  else if (roll < 1/7 + bell3Prob) { roleName = "3枚ベル"; reelStr = ["🔔", "🔔", "🔔"]; } 
-  else if (roll < 1/7 + bell3Prob + bell8Prob) { roleName = isBonus ? "14枚ベル" : "8枚ベル"; reelStr = ["🟡", "🟡", "🟡"]; } 
-  else if (roll < 1/7 + bell3Prob + bell8Prob + 1/64) { roleName = "スイカ"; reelStr = ["🍉", "🍉", "🍉"]; triggerLock = true; } 
-  else if (roll < 1/7 + bell3Prob + bell8Prob + 1/64 + 1/128) { roleName = "チェリー"; reelStr = ["🍒", "🦧", "🦧"]; triggerLock = true; }
+  p_bell8 = p_bell3 + (65536 / 22);
  }
+
+ const p_wWater = p_bell8 + (65536 / 64); 
+ const p_wCherry = p_wWater + (65536 / 128); 
+ const p_sWater = p_wCherry + (65536 / 256); 
+ const p_sCherry = p_sWater + (65536 / 512); 
+
+ if (roll < p_wRepl) { roleName = "リプレイ"; reelStr = ["🔄", "🔄", "🔄"]; } 
+ else if (roll < p_bell3) { roleName = "3枚ベル"; reelStr = ["🔔", "🔔", "🔔"]; } 
+ else if (currentMode === "BIG" && roll < p_bell14) { roleName = "14枚ベル"; reelStr = ["🟡", "🟡", "🟡"]; } 
+ else if (roll < p_bell8) { roleName = "8枚ベル"; reelStr = ["🎯", "🎯", "🎯"]; } 
+ else if (roll < p_wWater) { roleName = "弱スイカ"; reelStr = ["🍉", "🍉", "🦧"]; } 
+ else if (roll < p_wCherry) { roleName = "弱チェリー"; reelStr = ["🍒", "🦧", "🦧"]; } 
+ else if (roll < p_sWater) { roleName = "強スイカ"; reelStr = ["🍉", "🍉", "🍉"]; } 
+ else if (roll < p_sCherry) { roleName = "強チェリー"; reelStr = ["🍒", "🍒", "🍒"]; }
 
  document.getElementById("reel1").innerText = reelStr[0];
  document.getElementById("reel2").innerText = reelStr[1];
@@ -512,146 +574,77 @@ function playSlot() {
 
  let payout = 0;
  let medalDiffText = "-3枚"; 
+ let triggerLock = false;
 
- if (roleName === "リプレイ") {
-  isReplayG = true; 
- }
+ if (roleName === "リプレイ") { isReplayG = true; }
 
- let finalRoleDisplay = roleName;
- if (is77ハズレフラグ) {
-  finalRoleDisplay = "ハズレ";
- }
-
- if (is777揃いフラグ) { payout = 0; medalDiffText = "±0枚"; soundUwanose告知(); }
- else if (is77ハズレフラグ) { payout = 0; medalDiffText = "-3枚"; }
- else if (roleName === "リプレイ") { payout = 0; medalDiffText = "±0枚"; }
+ if (roleName === "リプレイ") { payout = 0; medalDiffText = "±0枚"; }
  else if (roleName === "3枚ベル") { payout = 3; soundWinSmall(); medalDiffText = "+3枚"; }
  else if (roleName === "8枚ベル") { payout = 8; soundWinSmall(); medalDiffText = "+8枚"; }
  else if (roleName === "14枚ベル") { payout = 14; soundWinSmall(); medalDiffText = "+14枚"; }
- else if (roleName === "スイカ") { payout = 6; soundRare(); medalDiffText = "+6枚"; }
- else if (roleName === "チェリー") { payout = 2; soundRare(); medalDiffText = "+2枚"; }
+ else if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
+  payout = (roleName.includes("スイカ")) ? 6 : 2;
+  // SKIP駆動中はウェイト音やフリーズ音の重複を抑えるため、演出時のみ音量を制御
+  soundRare(); medalDiffText = `+${payout}枚`; triggerLock = true;
+ } else { soundStart(); }
  
  netSamai += payout; 
+ if (currentMode === "BIG" && battleState === "NONE") { atRemainingMedal += payout; }
 
- let payMsgHTML = `<div>${finalRoleDisplay} [${medalDiffText}]</div>`;
+ let payMsgHTML = `<div>${roleName} [${medalDiffText}]</div>`;
+
+ /* --- レア役コンボ判定 --- */
+ let comboHit = false;
+ if (lastWasWeakRare && (roleName === "強スイカ" || roleName === "強チェリー")) { comboHit = true; }
+ lastWasWeakRare = (roleName === "弱スイカ" || roleName === "弱チェリー");
 
  // ================= ②各モードの進行制御 =================
- 
- /* --- A. 引き戻しゾーン制御（32G固定・完全ステルス） --- */
- if (isHikimodoshiZon) {
-  normalGames++; 
-  hikimodoshiGameCount++;
-  
-  let isHitThisGame = false;
-  if (hasHikimodoshi) {
-   if (hikimodoshiGameCount <= 31) {
-    if (Math.random() < 1/32) { isHitThisGame = true; } 
-   } else {
-    isHitThisGame = true; 
-   }
-  }
-
-  if (isHitThisGame) {
-   hasHikimodoshi = false;
-   isHikimodoshiZon = false;
-   hikimodoshiGameCount = 0;
-   soundBlackout();
-   triggerLock = true; 
-   
-   document.getElementById("slotReelsContainer").classList.add("blackout-reels");
-   document.getElementById("msgDisplay").classList.add("blackout-msg");
-   
-   currentMode = "BIG";
-   bigRemaining = 50; 
-   totalBigGames = 0;
-   bigBattleGames = 0; 
-   battleState = "NONE";
-   bonusStartSamai = netSamai; 
-   normalGames = 0; 
-   
-   displayMsg = `<span style="font-size:24px; font-weight:bold; color:#ff0000;">⚠️フリーズ：BLACKOUT⚠️</span><br><span style="color:#fff; font-size:18px;">プスン……レバーONで画面暗転！<br>🔴引き戻し成功！BIG BONUS復帰確定！ (50Gスタート)</span>`;
-   addSlotHistory(`通常画面から突如ブラックアウト！32G内引き戻し成功！`);
-   
-   updateSlotDisplay();
-   document.getElementById("msgDisplay").innerHTML = displayMsg;
-   if (triggerLock) lockPlayButton();
-   return; 
-  } else {
-   let serifuHTML = "";
-   if (nextSerifuInterval <= 0) {
-    let serifu = getSerifuEffect(hasHikimodoshi, internalMode);
-    serifuHTML = `<div>${serifu}</div>`;
-    nextSerifuInterval = Math.floor(Math.random() * 3) + 1; 
-   } else {
-    nextSerifuInterval--;
-   }
-   
-   if (hikimodoshiGameCount >= 32) { 
-    isHikimodoshiZon = false; 
-    hasHikimodoshi = false; 
-    hikimodoshiGameCount = 0; 
-   }
-   document.getElementById("msgDisplay").innerHTML = payMsgHTML + serifuHTML;
-  }
 
  /* --- B. 通常モード --- */
-  } else if (currentMode === "NORMAL") {
+ if (currentMode === "NORMAL") {
   normalGames++;
   
-  if (roleName === "スイカ" && Math.random() < 0.33) { if (internalMode < 3) { internalMode++; } } 
-  else if (roleName === "チェリー" && Math.random() < 0.66) { if (internalMode < 3) { internalMode++; } } 
-  else if (roleName === "リプレイ" && Math.random() < 0.10) { if (internalMode > 0) { internalMode--; } }
+  let czProb = 0;
+  if (roleName === "弱スイカ") czProb = 0.0625;
+  else if (roleName === "弱チェリー") czProb = 0.125;
+  else if (roleName === "強スイカ") czProb = 0.25;
+  else if (roleName === "強チェリー") czProb = 0.50;
+  if (comboHit) czProb = 1.00; 
 
-  let czHitProb = 0;
-  if (roleName === "スイカ") { czHitProb = [0.0625, 0.125, 0.25, 0.50][internalMode]; } 
-  else if (roleName === "チェリー") { czHitProb = [0.125, 0.25, 0.50, 1.00][internalMode]; }
-
-  let rareTriggered = (roleName === "スイカ" || roleName === "チェリー");
-  let rareHit = false;
-  if (rareTriggered) { rareHit = (Math.random() < czHitProb); }
+  let rareHit = (Math.random() < czProb);
 
   let gameHit = false;
-  let isTargetGame = [50, 100, 150, 200, 250].includes(normalGames);
-  let checkTrigger250G = false; 
+  let targetCheckG = isCeilingShortened ? [50, 100, 150, 200] : [50, 100, 150, 200, 250, 300];
+  let isTargetGame = targetCheckG.includes(normalGames);
 
   if (isTargetGame && zenchoRemaining === 0) {
    let gRoll = Math.random();
    let gProb = 0;
    
-   if (normalGames === 50) gProb = 0.15;
+   if (normalGames === 50) gProb = 0.07;
    else if (normalGames === 100) gProb = 0.33;
-   else if (normalGames === 150) gProb = 0.25;
-   else if (normalGames === 200) gProb = isLoopMode ? 1.00 : 0.50; 
-   else if (normalGames === 250) { gProb = 1.00; checkTrigger250G = true; } 
+   else if (normalGames === 150) gProb = 0.125;
+   else if (normalGames === 200) gProb = isCeilingShortened ? 1.00 : 0.50; 
+   else if (normalGames === 250) gProb = 0.25;
+   else if (normalGames === 300) gProb = 1.00; 
    
    if (gRoll < gProb) { gameHit = true; }
-   
    isZenchoHit = gameHit;
    zenchoRemaining = Math.floor(Math.random() * 7) + 6; 
-   zenchoTriggerSource = `${normalGames}Gのゾーン`;
-   triggeredBy300G = checkTrigger250G; 
    nextSerifuInterval = 0; 
   }
 
-  if (rareTriggered) {
+  if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
    if (zenchoRemaining > 0 && isZenchoHit && rareHit) {
-    currentMode = "CZ";
-    czRemaining = 10;
-    zenchoRemaining = 0;
-    triggerLock = true; 
-    displayMsg = `<div>${payMsgHTML}</div><br><span style="color:#ff5722; font-weight:bold;">💥 セリフ前兆中確定役から即告知！CZ突入！ 💥</span>`;
-    document.getElementById("msgDisplay").innerHTML = displayMsg;
-    addSlotHistory(`${normalGames}G → CZ当選！[滞在:${MODE_NAMES[internalMode]}]`);
-    soundBonusReady();
-    if (normalGames <= 199) { isLoopMode = false; }
-    updateSlotDisplay();
-    if (triggerLock) lockPlayButton();
-    return;
+    currentMode = "CZ"; czRemaining = 10; zenchoRemaining = 0; triggerLock = true; 
+    document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#ff5722; font-weight:bold;">💥 レア役から即告知！CZ突入！ 💥</span>`;
+    addSlotHistory(`${normalGames}G → CZ当選！[契機:${roleName}]`);
+    soundBonusReady(); 
+    if (isSkipRunning) stopSkip(); // オートプレイ時はCZ突入で強制停止
+    updateSlotDisplay(); if (triggerLock) lockPlayButton(); return;
    } else if (zenchoRemaining === 0) {
     isZenchoHit = rareHit;
     zenchoRemaining = Math.floor(Math.random() * 7) + 6; 
-    zenchoTriggerSource = roleName;
-    triggeredBy300G = false; 
     nextSerifuInterval = 0;
    }
   }
@@ -661,29 +654,26 @@ function playSlot() {
    zenchoRemaining--;
    if (zenchoRemaining === 0) {
     if (isZenchoHit) {
-     currentMode = "CZ";
-     czRemaining = 10;
-     triggerLock = true; 
-     displayMsg = `<div>${payMsgHTML}</div><br><span style="color:#ff5722; font-weight:bold;">💥 CZ「LAST 10G」突入！ 💥</span>`;
-     document.getElementById("msgDisplay").innerHTML = displayMsg;
-     addSlotHistory(`${normalGames}G → CZ当選！[滞在:${MODE_NAMES[internalMode]}]`);
-     soundBonusReady();
+     currentMode = "CZ"; czRemaining = 10; triggerLock = true; 
+     document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#ff5722; font-weight:bold;">💥 CZ「LAST 10G」突入！ 💥</span>`;
      
-     if (triggeredBy300G) { isLoopMode = true; } 
-     else if (normalGames >= 200 && isLoopMode) { isLoopMode = true; } 
-     else if (normalGames <= 199) { isLoopMode = false; }
-     updateSlotDisplay();
-     if (triggerLock) lockPlayButton();
-     return;
+     if (!isCeilingShortened && normalGames >= 300) {
+      isCeilingShortened = true;
+      addSlotHistory(`${normalGames}G → 最深天井到達！次回天井を200Gに短縮！`);
+     } else {
+      addSlotHistory(`${normalGames}G → 前兆経由でCZ当選！`);
+     }
+     
+     soundBonusReady(); 
+     if (isSkipRunning) stopSkip(); // 天井前兆経由のCZ突入でも強制停止
+     updateSlotDisplay(); if (triggerLock) lockPlayButton(); return;
     }
    } else {
     if (nextSerifuInterval <= 0) {
-     let serifu = getSerifuEffect(isZenchoHit, internalMode);
+     let serifu = getSerifuEffect(isZenchoHit);
      serifuHTML = `<div>${serifu}</div>`;
      nextSerifuInterval = Math.floor(Math.random() * 3) + 1;
-    } else {
-     nextSerifuInterval--;
-    }
+    } else { nextSerifuInterval--; }
    }
   }
   document.getElementById("msgDisplay").innerHTML = payMsgHTML + serifuHTML;
@@ -692,324 +682,217 @@ function playSlot() {
  } else if (currentMode === "CZ") {
   czRemaining--;
   let czSuccess = false;
-  let czKiki = "";
-  
   let czRoll = Math.random();
-  if (roleName === "チェリー") { czSuccess = true; czKiki = "チェリー（突破濃厚！）"; } 
-  else if (roleName === "スイカ") { if (czRoll < 0.75) { czSuccess = true; czKiki = "スイカ(75%)"; } } 
-  else if (roleName === "リプレイ") { if (czRoll < 0.40) { czSuccess = true; czKiki = "リプレイ(40%)"; } } 
-  else { if (czRoll < 0.05) { czSuccess = true; czKiki = `${roleName}(5%の奇跡)`; } }
+  
+  let successProb = 0.01; 
+  if (roleName === "リプレイ") successProb = 0.20;
+  else if (roleName === "弱スイカ") successProb = 0.40;
+  else if (roleName === "弱チェリー") successProb = 0.60;
+  else if (roleName === "強スイカ") successProb = 0.95;
+  else if (roleName === "強チェリー") successProb = 1.00;
+
+  if (czRoll < successProb) { czSuccess = true; }
   
   if (czSuccess) {
-   currentMode = "BONUS_READY";
-   triggerLock = true; 
-   displayMsg = `<div>${payMsgHTML}</div><br><span style="color:#4caf50; font-weight:bold;">🎉 CZ突破成功！次ゲームボーナスを揃え！</span>`;
-   document.getElementById("msgDisplay").innerHTML = displayMsg;
-   addSlotHistory(`${normalGames}G → CZ突破成功（${czKiki}）`);
+   currentMode = "BONUS_READY"; triggerLock = true; 
+   document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#4caf50; font-weight:bold;">🎉 CZ突破成功！次ゲームボーナスを揃え！</span>`;
+   addSlotHistory(`${normalGames}G → CZ突破（契機:${roleName}）`);
    soundBonusReady();
   } else if (czRemaining <= 0) {
    currentMode = "NORMAL";
-   internalMode = 3; 
-   displayMsg = `<div>${payMsgHTML}</div><br><span style="color:gray">CZ失敗… 通常へ戻ります</span>`;
-   document.getElementById("msgDisplay").innerHTML = displayMsg;
-   addSlotHistory(`${normalGames}G → CZ失敗 → 通常へ(超高確移行)`);
-   normalGames = 0;
-   soundBonusEnd();
+   document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:gray">CZ失敗… 通常へ</span>`;
+   addSlotHistory(`${normalGames}G → CZ失敗 → 通常へ`);
+   normalGames = 0; soundBonusEnd();
   } else {
    document.getElementById("msgDisplay").innerHTML = payMsgHTML;
   }
 
  /* ================= 確定画面 ================= */
  } else if (currentMode === "BONUS_READY") {
-  bonusStartSamai = netSamai + 3; 
-  triggerLock = true; 
-
+  bonusStartSamai = netSamai + 3; triggerLock = true; 
   document.getElementById("reel1").innerText = "7️⃣";
   document.getElementById("reel2").innerText = "7️⃣";
   document.getElementById("reel3").innerText = "7️⃣";
+  
   currentMode = "BIG";
-  bigRemaining = 50; 
+  atRemainingMedal = 150; 
   totalBigGames = 0;
-  bigBattleGames = 0; 
+  atCurrentGames = 0; 
   battleState = "NONE";
-  displayMsg = `<div>${payMsgHTML}</div><br><span style="color:#e91e63; font-size:20px;">🔴 BIG BONUS スタート！ (50G)</span>`;
-  document.getElementById("msgDisplay").innerHTML = displayMsg;
-  addSlotHistory(`${normalGames}G → BIG突入`);
+  isCeilingShortened = false;
+  
+  document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#e91e63; font-size:20px;">🔴 BIG BONUS(AT) 150枚スタート！</span>`;
+  addSlotHistory(`${normalGames}G → AT突入`);
   soundBonusStart();
 
- /* ================= BIG BONUS ================= */
+ /* ================= BIG BONUS (AT) ================= */
  } else if (currentMode === "BIG") {
   totalBigGames++;
 
   if (battleState === "NONE") {
-   bigRemaining--;
-   bigBattleGames++;
-
+   atCurrentGames++; 
    let currentRewardHTML = "";
 
-   if (is777揃いフラグ) {
-    let addG = Math.random() < 0.5 ? 50 : 100; 
-    bigRemaining += addG;
-    currentRewardHTML = `<div style="color:#e91e63; font-weight:bold; font-size:22px;">🟩7️⃣7️⃣7️⃣揃い炸裂！！ 上乗せ +${addG}G！</div>`;
-    addSlotHistory(`BB中 白熱の7揃いから直乗せ +${addG}G！`);
+   let uwanoseMedal = 0;
+   let uRoll = Math.random() * 100;
+   if (roleName === "弱スイカ") {
+    if (uRoll >= 50) {
+     let r = uRoll - 50;
+     if (r < 30) uwanoseMedal = 10; else if (r < 47) uwanoseMedal = 20; else if (r < 49.7) uwanoseMedal = 50;
+     else if (r < 49.8) uwanoseMedal = 100; else if (r < 49.9) uwanoseMedal = 200; else uwanoseMedal = 300;
+    }
+   } else if (roleName === "弱チェリー") {
+    if (uRoll >= 30) {
+     let r = uRoll - 30;
+     if (r < 35) uwanoseMedal = 10; else if (r < 60) uwanoseMedal = 20; else if (r < 67) uwanoseMedal = 30;
+     else if (r < 69.7) uwanoseMedal = 50; else if (r < 69.8) uwanoseMedal = 100; else if (r < 69.9) uwanoseMedal = 200; else uwanoseMedal = 300;
+    }
+   } else if (roleName === "強スイカ") {
+    if (uRoll < 50) uwanoseMedal = 30; else if (uRoll < 93) uwanoseMedal = 50; else if (uRoll < 99.7) uwanoseMedal = 100; else uwanoseMedal = 300;
+   } else if (roleName === "強チェリー") {
+    if (uRoll < 30) uwanoseMedal = 30; else if (uRoll < 70) uwanoseMedal = 50; else if (uRoll < 90) uwanoseMedal = 100;
+    else if (uRoll < 97) uwanoseMedal = 200; else if (uRoll < 99) uwanoseMedal = 300; else uwanoseMedal = 500;
    }
 
-   let isBattleHit = false; 
-   let isRare = (roleName === "スイカ" || roleName === "チェリー");
-
-   if (roleName === "スイカ") {
-    let r = Math.random();
-    let uwanose = 0;
-    if (r < 0.35) uwanose = 10;
-    else if (r < 0.47) uwanose = 30;
-    else if (r < 0.497) uwanose = 100;
-    else if (r < 0.50) uwanose = 300;
-    
-    if (uwanose > 0) {
-     bigRemaining += uwanose;
-     currentRewardHTML = `<div style="color:#4caf50; font-weight:bold; font-size:18px;">🍉スイカ直乗せ +${uwanose}G！</div>`;
-     addSlotHistory(`BB中 スイカから直乗せ +${uwanose}G`);
-     soundUwanose告知();
-    }
-    if (Math.random() < 0.03) { isBattleHit = true; }
-
-   } else if (roleName === "チェリー") {
-    let r = Math.random();
-    let uwanose = 5;
-    if (r < 0.35) uwanose = 10;
-    else if (r < 0.47) uwanose = 30;
-    else if (r < 0.497) uwanose = 50;
-    else if (r < 0.50) uwanose = 100;
-
-    bigRemaining += uwanose;
-    currentRewardHTML = `<div style="color:#e91e63; font-weight:bold; font-size:18px;">🍒チェリー直乗せ +${uwanose}G！</div>`;
-    addSlotHistory(`BB中 チェリーから直乗せ +${uwanose}G`);
+   if (uwanoseMedal > 0) {
+    atRemainingMedal += uwanoseMedal;
+    currentRewardHTML = `<div style="color:#00e676; font-weight:bold; font-size:18px;">🎉差枚数上乗せ +${uwanoseMedal}枚！</div>`;
+    addSlotHistory(`AT中 直乗せ +${uwanoseMedal}枚 [契機:${roleName}]`);
     soundUwanose告知();
-
-    if (Math.random() < 0.40) { isBattleHit = true; }
    }
 
-   let is50GTrigger = [50, 100, 150, 200, 250].includes(bigBattleGames);
-   if (is50GTrigger && !isBattleHit) {
-    let bRoll = Math.random();
-    let idx = [50, 100, 150, 200, 250].indexOf(bigBattleGames);
-    let hitProb = [0.10, 0.33, 0.50, 0.66, 1.00][idx];
-    if (bRoll < hitProb) { isBattleHit = true; }
+   let bAtkProb = 0;
+   if (roleName === "弱スイカ") bAtkProb = 0.03;
+   else if (roleName === "弱チェリー") bAtkProb = 0.0625;
+   else if (roleName === "強スイカ" || roleName === "強チェリー") bAtkProb = 0.40;
+
+   let isBattleHit = (Math.random() < bAtkProb);
+   let isGameCeilingHit = false;
+   
+   if ([30, 60, 90, 120, 150].includes(atCurrentGames)) {
+    let bgRoll = Math.random();
+    let bgProb = 0;
+    if (atCurrentGames === 30) bgProb = 0.25;
+    else if (atCurrentGames === 60) bgProb = 0.125;
+    else if (atCurrentGames === 90) bgProb = 0.33;
+    else if (atCurrentGames === 120) bgProb = 0.125;
+    else if (atCurrentGames === 150) bgProb = 1.00; 
+    
+    if (bgRoll < bgProb) { isGameCeilingHit = true; }
    }
 
-   let triggerPre = false;
-   let actualHit = false;
-
-   if (isBattleHit) {
-    actualHit = true;
-    triggerPre = true; 
-   } else {
-    if ((isRare || is50GTrigger) && bigRemaining >= 3) {
-     if (Math.random() < 0.50) {
-      triggerPre = true; 
-      actualHit = false;
-     }
-    }
-   }
-
-   if (triggerPre) {
-    battleState = "PRE";
-    bZenchoRemaining = 3; 
-    isBZenchoHitActual = actualHit; 
-    isBattleWin = false;
-    nextSerifuInterval = 0;
+   if (isBattleHit || isGameCeilingHit || isGoddesLoop) {
+    battleState = "PRE"; bZenchoRemaining = 2; 
+    isBZenchoHitActual = true; nextSerifuInterval = 0;
+    let srcText = isGameCeilingHit ? `AT内G数:${atCurrentGames}G` : (isGoddesLoop ? "ゴッデス1G連" : roleName);
+    addSlotHistory(`AT中 バトル前兆突入 [契機:${srcText}]`);
+    atCurrentGames = 0; 
     document.getElementById("msgDisplay").innerHTML = payMsgHTML + currentRewardHTML;
    } else {
-    if (bigRemaining <= 0) {
+    if (atRemainingMedal <= 0) {
      currentMode = "RESULT";
      lastCalculatedGain = netSamai - bonusStartSamai;
-     displayMsg = `<div>${payMsgHTML}</div><br><span style="color:#795548; font-size:20px;">📊 リザルト画面 📊<br>獲得枚数：${lastCalculatedGain}枚</span>`;
-     document.getElementById("msgDisplay").innerHTML = displayMsg;
-     addSlotHistory(`${totalBigGames}G → BIG終了（獲得:${lastCalculatedGain}枚）`);
+     document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#795548; font-size:20px;">📊 リザルト画面 📊<br>獲得枚数：${lastCalculatedGain}枚</span>`;
+     addSlotHistory(`AT終了（獲得:${lastCalculatedGain}枚）`);
     } else {
      document.getElementById("msgDisplay").innerHTML = payMsgHTML + currentRewardHTML;
     }
    }
 
+  /* --- バトル前兆画面 --- */
   } else if (battleState === "PRE") {
    bZenchoRemaining--;
-   let bSerifuHTML = "";
+   let bSerifuHTML = `<div style="color:#9c27b0; font-weight:bold;">「敵の気配が近づいている……！」</div>`;
    
-   if (nextSerifuInterval <= 0) {
-    let bSerifu = "「何かが近づいてくる気配がする……」";
-    let isBRed = false;
-    if (bZenchoRemaining === 1) {
-     bSerifu = isBZenchoHitActual ? "「よし、この先が敵の根城だ！突撃するぞ！」" : "「よし、この先が敵の根城だ！」";
-     if (isBZenchoHitActual && Math.random() < 0.3) isBRed = true; 
-    }
-    if (isBRed) bSerifuHTML = `<div class="red-serif">${bSerifu}</div>`;
-    else bSerifuHTML = `<div style="color:#9c27b0; font-weight:bold;">${bSerifu}</div>`;
+   if (bZenchoRemaining === 0) {
+    battleState = "BATTLE"; battleCount = 0;
     
-    nextSerifuInterval = Math.floor(Math.random() * 2) + 1; 
-   } else {
-    nextSerifuInterval--;
-    bSerifuHTML = `<div style="color:#9c27b0; font-weight:bold;">「急ぐぞ……！」</div>`;
+    let enemyRoll = Math.random() * 100;
+    if (isGoddesLoop) {
+     enemyType = "ゴッデス"; enemyMaxHP = 100; battleLimitG = 5; isGoddesLoop = false;
+    } else {
+     if (enemyRoll < 10) { enemyType = "スライム"; enemyMaxHP = 10; battleLimitG = 3; }
+     else if (enemyRoll < 55) { enemyType = "スライムキング"; enemyMaxHP = 50; battleLimitG = 5; }
+     else if (enemyRoll < 86) { enemyType = "ゴーレム"; enemyMaxHP = 30; battleLimitG = 5; }
+     else if (enemyRoll < 89) { enemyType = "メタル"; enemyMaxHP = 3; battleLimitG = 3; }
+     else if (enemyRoll < 99) { enemyType = "ミミック"; enemyMaxHP = 50; battleLimitG = 8; }
+     else { enemyType = "ゴッデス"; enemyMaxHP = 100; battleLimitG = 5; }
+    }
+    enemyHP = enemyMaxHP;
+    bSerifuHTML = `<div style="color:#ff9800; font-weight:bold; font-size:20px;">⚔️ 敵出現！ vs ${enemyType} (HP ${enemyHP}) ⚔️</div>`;
+    soundBattleStart();
    }
    document.getElementById("msgDisplay").innerHTML = payMsgHTML + bSerifuHTML;
 
-   if (bZenchoRemaining === 0) {
-    if (isBZenchoHitActual) {
-     battleState = "BATTLE";
-     battleCount = 0; 
-     
-     let eRoll = Math.random();
-     if (eRoll < 0.50) { enemyType = "ゴーレム"; }
-     else if (eRoll < 0.80) { enemyType = "スライム"; }
-     else { enemyType = "ミミック"; }
-     
-     displayMsg = `<div>${payMsgHTML}</div><br><span style="color:#ff9800; font-weight:bold;">⚔️ 敵出現！ vs ${enemyType} ⚔️</span>`;
-     document.getElementById("msgDisplay").innerHTML = displayMsg;
-     soundBattleStart();
-    } else {
-     battleState = "NONE";
-     if (bigRemaining <= 0) {
-      currentMode = "RESULT";
-      lastCalculatedGain = netSamai - bonusStartSamai;
-      displayMsg = `<div>${payMsgHTML}</div><br><span style="color:#795548; font-size:20px;">📊 リザルト画面 📊<br>獲得枚数：${lastCalculatedGain}枚</span>`;
-      document.getElementById("msgDisplay").innerHTML = displayMsg;
-      addSlotHistory(`${totalBigGames}G → ガセ前兆スルーによりBB終了`);
-     }
-    }
-   }
-
+  /* --- ガチダメージバトル画面 --- */
   } else if (battleState === "BATTLE") {
-   battleCount++; 
-   let winProb = 0;
-   let isRare = (roleName === "スイカ" || roleName === "チェリー");
-   let isBell = (roleName === "3枚ベル" || roleName === "8枚ベル" || roleName === "14枚ベル");
-   
-   if (enemyType === "スライム") {
-    if (isRare) winProb = 1.00;
-    else if (roleName === "リプレイ") winProb = 0.75;
-    else if (isBell) winProb = 0.50;
-    else winProb = 0.07;
-   } else if (enemyType === "ゴーレム") {
-    if (isRare) winProb = 1.00;
-    else if (roleName === "リプレイ") winProb = 0.60;
-    else if (isBell) winProb = 0.20;
-    else winProb = 0.03;
-   } else if (enemyType === "ミミック") {
-    if (isRare) winProb = 1.00;
-    else if (roleName === "リプレイ") winProb = 0.33;
-    else if (isBell) winProb = 0.06;
-    else winProb = 0.01;
-   }
+   battleCount++;
+   let dmg = 0;
+   let dmgRoll = Math.random() * 100;
 
-   if (Math.random() < winProb) { isBattleWin = true; }
-   
-   let fightSerifu = "「くらえ！全力の一撃！！」";
-   let isFightRed = false;
-   if (battleCount === 2) fightSerifu = "「相手の動きが見切れてきたぞ！」";
-   if (battleCount === 3) {
-    fightSerifu = isBattleWin ? "「これで終わりだーー！」" : "「くっ、避けきれない……！精度を上げねば！」";
-    if (isBattleWin && Math.random() < 0.4) isFightRed = true; 
-   }
-   
-   let fightHTML = "";
-   if (isFightRed) fightHTML = `<div class="red-serif">【${enemyType}戦 ${battleCount}/3G】${fightSerifu}</div>`;
-   else fightHTML = `<div style="color:#ff9800; font-weight:bold;">【${enemyType}戦 ${battleCount}/3G】${fightSerifu}</div>`;
-   document.getElementById("msgDisplay").innerHTML = payMsgHTML + fightHTML;
-   
-   if (battleCount === 3) {
-    if (isBattleWin) {
-     battleState = "REWARD"; 
-     triggerLock = true; 
-     soundUwanose告知();
-    } else {
-     battleState = "NONE";
-     bigBattleGames = 0; 
-     soundBonusEnd();
-     if (bigRemaining <= 0) {
-      currentMode = "RESULT";
-      lastCalculatedGain = netSamai - bonusStartSamai;
-      displayMsg = `<div>${payMsgHTML}</div><br><span style="color:#795548; font-size:20px;">📊 リザルト画面 📊<br>獲得枚数：${lastCalculatedGain}枚</span>`;
-      document.getElementById("msgDisplay").innerHTML = displayMsg;
-      addSlotHistory(`${totalBigGames}G → バトル敗北によりそのままBB終了`);
-     }
+   if (enemyType === "メタル") {
+    if (["弱スイカ", "弱チェリー"].includes(roleName)) dmg = 2;
+    else if (["強スイカ", "強チェリー"].includes(roleName)) dmg = 3;
+   } else {
+    if (roleName === "ハズレ" || roleName.includes("ベル")) {
+     if (dmgRoll < 70) dmg = 1; else if (dmgRoll < 90) dmg = 2; else if (dmgRoll < 97) dmg = 3; else dmg = 5;
+    } else if (roleName === "リプレイ") {
+     if (dmgRoll < 40) dmg = 2; else if (dmgRoll < 70) dmg = 3; else if (dmgRoll < 90) dmg = 5; else if (dmgRoll < 97) dmg = 10; else dmg = 20;
+    } else if (roleName === "弱スイカ") {
+     if (dmgRoll < 33) dmg = 5; else if (dmgRoll < 66) dmg = 10; else if (dmgRoll < 99) dmg = 20; else dmg = 30;
+    } else if (roleName === "弱チェリー") {
+     if (dmgRoll < 70) dmg = 10; else if (dmgRoll < 90) dmg = 20; else if (dmgRoll < 97) dmg = 30; else dmg = 50;
+    } else if (roleName === "強スイカ") {
+     if (dmgRoll < 66) dmg = 20; else if (dmgRoll < 77) dmg = 30; else if (dmgRoll < 88) dmg = 40; else dmg = 50;
+    } else if (roleName === "強チェリー") {
+     if (dmgRoll < 90) dmg = 30; else if (dmgRoll < 93) dmg = 40; else if (dmgRoll < 96) dmg = 50; else dmg = 100; 
     }
    }
 
+   enemyHP = Math.max(0, enemyHP - dmg);
+   let bSerifuHTML = `<div style="color:#ff9800;">【${enemyType}戦】${dmg} DMG！(残りHP: ${enemyHP})</div>`;
+   
+   if (enemyHP <= 0) {
+    battleState = "REWARD"; triggerLock = true; soundUwanose告知();
+   } else if (battleCount >= battleLimitG) {
+    battleState = "NONE";
+    bSerifuHTML += `<div style="color:#7f8c8d;">不覚……！逃げられてしまった。</div>`;
+    soundBonusEnd();
+    
+    if (atRemainingMedal <= 0) {
+     currentMode = "RESULT";
+     lastCalculatedGain = netSamai - bonusStartSamai;
+     bSerifuHTML += `<br><span style="color:#795548; font-size:20px;">📊 リザルト画面 📊<br>獲得枚数：${lastCalculatedGain}枚</span>`;
+     addSlotHistory(`AT終了（バトル失敗時に差枚限界、獲得:${lastCalculatedGain}枚）`);
+    }
+   }
+   document.getElementById("msgDisplay").innerHTML = payMsgHTML + bSerifuHTML;
+
+  /* --- 報酬告知画面 --- */
   } else if (battleState === "REWARD") {
-   let uwanose = 0;
-   let rRoll = Math.random();
+   battleState = "NONE";
+   let rewardMedal = 0;
+   let rRoll = Math.random() * 100;
 
-   if (enemyType === "スライム") {
-    if (rRoll < 0.50) uwanose = 10;
-    else if (rRoll < 0.90) uwanose = 20;
-    else uwanose = 30;
-   } else if (enemyType === "ゴーレム") {
-    uwanose = rRoll < 0.50 ? 30 : 50;
-   } else if (enemyType === "ミミック") {
-    uwanose = rRoll < 0.90 ? 50 : 100;
+   if (enemyType === "スライム") { rewardMedal = rRoll < 50 ? 30 : 50; } 
+   else if (enemyType === "スライムキング") { if (rRoll < 60) rewardMedal = 30; else if (rRoll < 97) rewardMedal = 50; else rewardMedal = 100; } 
+   else if (enemyType === "ゴーレム") { if (rRoll < 48) rewardMedal = 30; else if (rRoll < 96) rewardMedal = 50; else rewardMedal = 100; } 
+   else if (enemyType === "メタル") { if (rRoll < 80) rewardMedal = 100; else if (rRoll < 97) rewardMedal = 200; else rewardMedal = 300; } 
+   else if (enemyType === "ミミック") { if (rRoll < 30) rewardMedal = 50; else if (rRoll < 97) rewardMedal = 100; else if (rRoll < 99.7) rewardMedal = 200; else rewardMedal = 300; } 
+   else if (enemyType === "ゴッデス") {
+    isGoddesLoop = true; 
+    if (rRoll < 33) rewardMedal = 100; else if (rRoll < 66) rewardMedal = 200; else if (rRoll < 99) rewardMedal = 300; else rewardMedal = 1000;
    }
 
-   bigRemaining += uwanose;
-   displayMsg = `<div>${payMsgHTML}</div><br><span style="color:#00e676; font-weight:bold; font-size:22px;">👑 報酬告知 👑：+${uwanose}G 魂の上乗せ！</span>`;
-   document.getElementById("msgDisplay").innerHTML = displayMsg;
-   addSlotHistory(`BB中 バトル勝利(${enemyType}) → +${uwanose}G`);
-   soundUwanose告知();
-
-   battleState = "NONE";
-   bigBattleGames = 0; 
-   bigRemaining--;
-   bigBattleGames++;
-  }
-
- /* ================= リザルト画面 ================= */
- } else if (currentMode === "RESULT") {
-  let r = Math.random();
-  let revived = false;
-  
-  if (roleName === "スイカ" || roleName === "チェリー") {
-   currentMode = "BIG";
-   bigRemaining = 50; 
-   totalBigGames = 0;
-   battleState = "NONE";
-   bonusStartSamai = netSamai; 
-   triggerLock = true; 
-   displayMsg = `<div>${payMsgHTML}</div><br><span style='color:#e91e63; font-weight:bold;'>⚡リザルト中レア役！🔴BIG BONUS復帰！</span>`;
-   document.getElementById("msgDisplay").innerHTML = displayMsg;
-   addSlotHistory(`リザルト → BIG復帰（${roleName}から/G数引き継ぎ！）`);
-   soundUwanose告知();
-   revived = true;
-  } else if (roleName === "リプレイ" && r < 0.01) {
-   currentMode = "BIG";
-   bigRemaining = 50;
-   totalBigGames = 0;
-   battleState = "NONE";
-   bonusStartSamai = netSamai; 
-   triggerLock = true; 
-   displayMsg = `<div>${payMsgHTML}</div><br><span style='color:#e91e63; font-weight:bold;'>👑 リプレイから1%を掴みBIG復帰！</span>`;
-   document.getElementById("msgDisplay").innerHTML = displayMsg;
-   addSlotHistory(`リザルト → BIG復帰（1%リプレイから/G数引き継ぎ！）`);
-   soundUwanose告知();
-   revived = true;
-  }
-  
-  if (!revived) {
-   currentMode = "NORMAL";
-   normalGames = 0;
-   internalMode = 3; 
-   soundBonusEnd();
-   
-   isHikimodoshiZon = true; 
-   hikimodoshiGameCount = 0;
-   nextSerifuInterval = 0; 
-   
-   if (Math.random() < 0.15) {
-    hasHikimodoshi = true;
-    addSlotHistory(`（内部状態：15%の引き戻しモードに当選！最大32G間、通常画面でガチ抽選）`);
-   } else {
-    hasHikimodoshi = false;
-    addSlotHistory(`（内部状態：引き戻し非当選・ガセ引き戻し前兆スタート）`);
+   atRemainingMedal += rewardMedal;
+   let bSerifuHTML = `<div style="color:#00e676; font-weight:bold; font-size:22px;">👑 撃破報酬 👑：差枚数 +${rewardMedal}枚獲得！</div>`;
+   if (isGoddesLoop) {
+    bSerifuHTML += `<div style="color:#ffcd00; font-weight:bold;">🔥 神の恩寵：ゴッデス1G連確定！ 🔥</div>`;
    }
+   addSlotHistory(`バトル勝利(${enemyType}) → +${rewardMedal}枚獲得`);
+   soundUwanose告知();
    
-   document.getElementById("msgDisplay").innerHTML = payMsgHTML;
+   document.getElementById("msgDisplay").innerHTML = payMsgHTML + bSerifuHTML;
   }
  }
 
