@@ -261,7 +261,7 @@ button{cursor:pointer}
 <body>
 
 <div id="slotArea">
- <div class="version-tag">v3.92</div>
+ <div class="version-tag">v3.93</div>
 
  <div class="volume-container">
   <span>🔈 音量:</span>
@@ -321,7 +321,7 @@ let totalOutMedals = 0;
 let countBB = 0;
 let countRB = 0;
 
-currentMode = "NORMAL"; 
+let currentMode = "NORMAL"; 
 let normalGames = 0;
 
 /* プチボーナス（PB）用の管理変数 */
@@ -614,7 +614,7 @@ function playSlot() {
   return;
  }
 
- // ★【最優先修正】プチボーナスが8回引き終わった状態（isPbFinishedG）なら、他のすべての処理に割り込んで即大当り確定画面（生揃い準備）へ飛ばす！
+ // プチボーナスが8回引き終わった状態（isPbFinishedG）なら即確定画面に移行させて脱出させる
  if (currentMode === "PETIT_BONUS" && isPbFinishedG) {
   isPbFinishedG = false; 
   triggerLock = true;
@@ -769,7 +769,7 @@ function playSlot() {
    currentMode = "NORMAL";
    pbThroughCount++; 
    normalGames = 0;  
-   isHikimodoshiMode = false; // ★ プチボ後は引き戻し抽選を行わない
+   isHikimodoshiMode = false; 
    hasHikimodoshi権利 = false;
    
    document.getElementById("reel1").innerText = "7️⃣";
@@ -782,6 +782,7 @@ function playSlot() {
   }
   updateSlotDisplay(); if (triggerLock) lockPlayButton(); return;
  }
+
 
  /* --- B. 通常モード --- */
  if (currentMode === "NORMAL") {
