@@ -261,7 +261,7 @@ button{cursor:pointer}
 <body>
 
 <div id="slotArea">
- <div class="version-tag">v3.91</div>
+ <div class="version-tag">v3.92</div>
 
  <div class="volume-container">
   <span>🔈 音量:</span>
@@ -321,7 +321,7 @@ let totalOutMedals = 0;
 let countBB = 0;
 let countRB = 0;
 
-let currentMode = "NORMAL"; 
+currentMode = "NORMAL"; 
 let normalGames = 0;
 
 /* プチボーナス（PB）用の管理変数 */
@@ -608,50 +608,13 @@ function updateSlotDisplay() {
  }
 }
 
-function getSerifuEffect(isHit) {
- let text = "「……レバーを叩くんだ！」";
- let isRed = false; 
- let seed = Math.random();
-
- if (isHit) {
-  if (seed < 0.05) {
-   let r = Math.random();
-   if (r < 0.5) text = "「あっつい！あっつい！」";
-   else text = "「このあとチャンスだぞ！」";
-   isRed = true;
-  } else {
-   let r = Math.random();
-   if (r < 0.3) text = "激アツ「何かが起きる予感……！」";
-   else if (r < 0.6) text = "「気配を感じる……。」";
-   else if (r < 0.8) text = "「諦めるのはまだ早いぞ！」";
-   else text = "「神の領域へ……！？」";
-  }
- } else {
-  let r = Math.random();
-  if (r < 0.3) text = "「何かが起きる予感……！気配上昇か！？」";
-  else if (r < 0.6) text = "「気配を感じる……。」";
-  else text = "「……静かだな。」";
- }
-
- return isRed ? `<span class="red-serif">${text}</span>` : `<span>${text}</span>`;
-}
-
-function getRandomHazureReels() {
- const hazurePatterns = [
-  ["🍒", "🍉", "🔔"], ["🍉", "🔔", "🍒"], ["🔔", "🍒", "🍉"], ["🔄", "🍒", "🔔"], ["🟡", "🍉", "🔄"],
-  ["🍒", "🔄", "🍉"], ["🍉", "🟡", "🔔"], ["🔔", "🔄", "🍒"], ["🔄", "🍉", "🟡"], ["🟡", "🍒", "🔄"]
- ];
- return hazurePatterns[Math.floor(Math.random() * hazurePatterns.length)];
-}
-
-/* --- スロット実行メイン --- */
 function playSlot() {
  if (isSkipRunning && currentMode !== "NORMAL" && !isBonusReadyG) {
   stopSkip();
   return;
  }
 
- // ★ ① 修正：プチボーナスが8回引き終わった状態（isPbFinishedG）なら、最優先で大当り確定画面（生揃い）に移行させて脱出させる
+ // ★【最優先修正】プチボーナスが8回引き終わった状態（isPbFinishedG）なら、他のすべての処理に割り込んで即大当り確定画面（生揃い準備）へ飛ばす！
  if (currentMode === "PETIT_BONUS" && isPbFinishedG) {
   isPbFinishedG = false; 
   triggerLock = true;
@@ -662,7 +625,7 @@ function playSlot() {
    nextBonusType = "THROUGH"; 
   }
   isBonusReadyG = true; 
-  document.getElementById("msgDisplay").innerHTML = `<div>14枚ベルナビ完了 [±0枚]</div><br><span style="color:#fff; font-weight:bold;">🎰 図柄を狙え！運命の生揃いレバーオン！ 🎰</span>`;
+  document.getElementById("msgDisplay").innerHTML = `<div>レバーオン！ [±0枚]</div><br><span style="color:#fff; font-weight:bold;">🎰 図柄を狙え！運命の生揃いレバーオン！ 🎰</span>`;
   soundBonusReady();
   updateSlotDisplay(); if (triggerLock) lockPlayButton(); return;
  }
@@ -680,7 +643,7 @@ function playSlot() {
   totalInMedals += 3;
  }
  
- // ================= ①フラグ抽選 =================
+ // フラグ抽選
  let roll = Math.random() * 65536;
  let roleName = "ハズレ";
  let reelStr = getRandomHazureReels(); 
@@ -711,7 +674,6 @@ function playSlot() {
  else if (roll < p_sWater) { roleName = "強スイカ"; reelStr = ["🍉", "🍉", "🍉"]; } 
  else if (roll < p_sCherry) { roleName = "強チェリー"; reelStr = ["🍒", "🍒", "🍒"]; }
 
- // SKIP速度の可変制御
  if (isSkipRunning) {
   if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
    currentSkipInterval = 500; 
@@ -730,21 +692,20 @@ function playSlot() {
 
  if (roleName === "リプレイ") { isReplayG = true; }
 
- // ★ ③ 払い出し枚数の正式反映（強スイカ3枚、強チェリー2枚）
  if (roleName === "リプレイ") { payout = 3; medalDiffText = "±0枚"; } 
  else if (roleName === "3枚ベル") { payout = 3; soundWinSmall(); medalDiffText = "+3枚"; }
  else if (roleName === "8枚ベル") { payout = 8; soundWinSmall(); medalDiffText = "+8枚"; }
  else if (roleName === "14枚ベル") { payout = 14; soundWinSmall(); medalDiffText = "+14枚"; }
  else if (roleName === "弱スイカ") { payout = 6; soundRare(); medalDiffText = "+6枚"; triggerLock = true; }
  else if (roleName === "弱チェリー") { payout = 2; soundRare(); medalDiffText = "+2枚"; triggerLock = true; }
- else if (roleName === "強スイカ") { payout = 3; soundRare(); medalDiffText = "+3枚"; triggerLock = true; } // 強スイカは3枚
- else if (roleName === "強チェリー") { payout = 2; soundRare(); medalDiffText = "+2枚"; triggerLock = true; } // 強チェリーは2枚
+ else if (roleName === "強スイカ") { payout = 3; soundRare(); medalDiffText = "+3枚"; triggerLock = true; } 
+ else if (roleName === "強チェリー") { payout = 2; soundRare(); medalDiffText = "+2枚"; triggerLock = true; } 
  else { soundStart(); }
  
  netSamai += (roleName === "リプレイ" ? 0 : payout); 
  totalOutMedals += payout; 
 
- // AT（BIG）中の差枚数管理
+ // AT中の差枚数管理
  if (currentMode === "BIG" && currentMode !== "BONUS_READY" && !battleFailedGraceG) {
   if (roleName === "リプレイ") {
    // 維持
@@ -756,12 +717,11 @@ function playSlot() {
 
  let payMsgHTML = `<div>${roleName} [${medalDiffText}]</div>`;
 
- /* --- レア役コンボ判定 --- */
  let comboHit = false;
  if (lastWasWeakRare && (roleName === "強スイカ" || roleName === "強チェリー")) { comboHit = true; }
  lastWasWeakRare = (roleName === "弱スイカ" || roleName === "弱チェリー");
 
- // 図柄を揃える確定ゲーム（isBonusReadyG）
+ // 図柄を揃えるゲーム（isBonusReadyG）
  if (isBonusReadyG) {
   isBonusReadyG = false; 
   triggerLock = true;
@@ -809,7 +769,7 @@ function playSlot() {
    currentMode = "NORMAL";
    pbThroughCount++; 
    normalGames = 0;  
-   isHikimodoshiMode = false; 
+   isHikimodoshiMode = false; // ★ プチボ後は引き戻し抽選を行わない
    hasHikimodoshi権利 = false;
    
    document.getElementById("reel1").innerText = "7️⃣";
@@ -823,12 +783,10 @@ function playSlot() {
   updateSlotDisplay(); if (triggerLock) lockPlayButton(); return;
  }
 
-
  /* --- B. 通常モード --- */
  if (currentMode === "NORMAL") {
   normalGames++;
   
-  // ★ ② 修正：レア役を引いたその瞬間に当選契機をロック（前兆すり抜けでの規定ゲーム数化バグを完全に修正）
   let pbProb = 0;
   if (roleName === "弱スイカ") pbProb = 0.0625;
   else if (roleName === "弱チェリー") pbProb = 0.125;
@@ -838,7 +796,6 @@ function playSlot() {
 
   let rareHit = (Math.random() < pbProb);
 
-  // レア役で直撃・またはPB前兆が刺さった瞬間に契機を即保存
   if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName) && rareHit && zenchoRemaining === 0) {
    pbTrigger契機 = roleName;
    isZenchoHit = true;
@@ -882,7 +839,6 @@ function playSlot() {
    zenchoRemaining = 1; 
   }
 
-  // 強チェリー成立時の3%でメインAT直撃前兆抽選
   if (roleName === "強チェリー" && zenchoRemaining === 0 && !isStrongCherryDirectAt) {
    if (Math.random() < 0.03) {
     isStrongCherryDirectAt = true;
@@ -913,7 +869,6 @@ function playSlot() {
    nextSerifuInterval = 0; 
   }
 
-  // 当たり告知発生タイミング（本前兆最終G）
   if (zenchoRemaining > 0 && zenchoRemaining - 1 === 0 && isZenchoHit) {
    triggerLock = true;
    zenchoRemaining = 0;
@@ -932,7 +887,6 @@ function playSlot() {
     addSlotHistory(`${normalGames}G → AT突入！[契機:${pbTrigger契機}]`);
    } 
    else {
-    // 9:1 振り分け
     if (Math.random() < 0.10) {
      nextBonusType = "AT";
      addSlotHistory(`${normalGames}G → 1:9振り分け突破でAT直行！[契機:${pbTrigger契機}]`);
@@ -977,7 +931,6 @@ function playSlot() {
   if (pbBellCount >= 8) {
    isPbFinishedG = true; 
    let pbGain = netSamai - pbStartSamai;
-   // 14枚ベルを8回引いた「まさにそのゲーム」でログを残す
    addSlotHistory(`プチボーナス終了（獲得：${pbGain}枚）`);
    document.getElementById("msgDisplay").innerHTML = `<div>${roleName} [${medalDiffText}]</div><br><span style="color:#ff9800; font-weight:bold;">🏁 ナビ完了！次ゲーム、運命の図柄生揃いレバー！</span>`;
   } else {
@@ -988,7 +941,6 @@ function playSlot() {
  } else if (currentMode === "BIG") {
   totalBigGames++;
 
-  // 泣きのラスト1GレバーON時
   if (battleFailedGraceG) {
    battleFailedGraceG = false;
    
