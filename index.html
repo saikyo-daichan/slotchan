@@ -61,9 +61,11 @@ button{cursor:pointer}
  -webkit-tap-highlight-color: transparent;
 }
 .samai-display {
- font-size: 18px;
+ font-size: 16px;
  font-weight: bold;
  white-space: nowrap;
+ text-align: right;
+ line-height: 1.3;
 }
 .status-panel {
  background: #222;
@@ -197,14 +199,15 @@ button{cursor:pointer}
 <body>
 
 <div id="slotArea">
- <div class="version-tag">v3.31</div>
+ <div class="version-tag">v3.40</div>
 
  <div class="slot-header">
   <div class="header-buttons">
    <button id="soundToggleBtn" class="sound-btn" onclick="toggleSound()">🔊 ON</button>
    <button id="mainSkipBtn" class="skip-btn" onclick="toggleSkip()">SKIP</button>
   </div>
-  <div id="samaiDisplay" class="samai-display">差枚: 0枚</div>
+  <!-- ★ 機械割表示エリアを新設 -->
+  <div id="samaiDisplay" class="samai-display">差枚: 0枚<br>機械割: 100.00%</div>
  </div>
 
  <div class="status-panel">
@@ -238,6 +241,10 @@ const USER_NAME="加藤";
 /* --- スロット用の内部変数 --- */
 let netSamai = 0; 
 
+/* ★ 機械割算出用のガチ変数 */
+let totalInMedals = 0;  // 累計投入枚数
+let totalOutMedals = 0; // 累計払い出し枚数
+
 let currentMode = "NORMAL"; 
 let normalGames = 0;
 
@@ -247,6 +254,7 @@ let pbAtHit = false;
 let pbThroughCount = 0;   
 let pbTrigger契機 = "規定ゲーム数"; 
 let isPbFinishedG = false; 
+let pbStartSamai = 0;     // ★ PB開始時の差枚数（獲得枚数表示用）
 
 /* v3.20 新設フラグ */
 let isDirectAtChokugeki = false; 
@@ -431,7 +439,13 @@ function stopSkip() {
 function updateSlotDisplay() {
  let samaiColor = netSamai >= 0 ? "#00e676" : "#d32f2f";
  let samaiSign = netSamai >= 0 ? "+" : "";
- document.getElementById("samaiDisplay").innerHTML = `<span style="color:${samaiColor};">差枚: ${samaiSign}${netSamai}枚</span>`;
+ 
+ // ★ 機械割（出玉率）のリアルタイムガチ計算
+ let machineRate = 100.00;
+ if (totalInMedals > 0) {
+  machineRate = (totalOutMedals / totalInMedals) * 100;
+ }
+ document.getElementById("samaiDisplay").innerHTML = `<span style="color:${samaiColor};">差枚: ${samaiSign}${netSamai}枚</span><br><span style="color:#aaa; font-size:13px;">機械割: ${machineRate.toFixed(2)}%</span>`;
  
  const stateEl = document.getElementById("slotState");
  const normalGEl = document.getElementById("normalGameCount");
@@ -470,19 +484,11 @@ function updateSlotDisplay() {
   subGEl.innerText = "狙え! [777]";
   totalBBEl.style.display = "none";
   document.getElementById("mainPlayBtn").innerText = "777を揃える (±0枚)";
- } else if (currentMode === "RESULT") {
-  stateEl.innerText = "状態: 📊 ATリザルト画面 📊";
-  stateEl.style.color = "#795548";
-  subGEl.innerText = "レア役で復活！？気合いを込めろ！";
-  totalBBEl.style.display = "none";
-  document.getElementById("mainPlayBtn").innerText = "運命のレバーON！";
  } else if (currentMode === "BIG") {
   totalBBEl.innerText = `累計AT: ${totalBigGames}G`;
   totalBBEl.style.display = "block";
   document.getElementById("mainPlayBtn").innerText = "PLAY";
 
-  // ★ 修正点①：枚数が1枚以上あるときはいかなる場合も絶対に数値を表示！
-  // 「ベースの残り枚数が0枚」かつ「バトル中または前兆中」の時だけ「LAST ?枚」にする。
   let showQuestionMedal = (atRemainingMedal <= 0 && (battleState !== "NONE" || battleFailedGraceG));
   let medalDisplayStr = showQuestionMedal ? "LAST ?枚" : `LAST ${atRemainingMedal}枚`;
 
@@ -553,16 +559,18 @@ function playSlot() {
   return;
  }
 
- // 777を揃える時、77BARを揃える時、リザルト画面でのレバーはリプレイ扱い（メダル消費なし）
- if (currentMode === "BONUS_READY" || currentMode === "PETIT_BONUS_READY" || currentMode === "RESULT") {
+ // 777を揃える時、77BARを揃える時はリプレイ扱い（メダル消費なし、投入枚数計算のみ補正）
+ if (currentMode === "BONUS_READY" || currentMode === "PETIT_BONUS_READY") {
   isReplayG = true; 
  }
 
- // メダル消費判定
+ // メダル消費判定・および機械割用インカウンター加算
  if (isReplayG) {
   isReplayG = false; 
+  totalInMedals += 3; // リプレイも内部的には3枚投入➔3枚払い出しとして機械割計算
  } else {
   netSamai -= 3; 
+  totalInMedals += 3;
  }
  
  // ================= ①フラグ抽選（1/65536ベース） =================
@@ -615,7 +623,7 @@ function playSlot() {
 
  if (roleName === "リプレイ") { isReplayG = true; }
 
- if (roleName === "リプレイ") { payout = 0; medalDiffText = "±0枚"; }
+ if (roleName === "リプレイ") { payout = 3; medalDiffText = "±0枚"; } // 機械割計算用に払い出し3枚扱い
  else if (roleName === "3枚ベル") { payout = 3; soundWinSmall(); medalDiffText = "+3枚"; }
  else if (roleName === "8枚ベル") { payout = 8; soundWinSmall(); medalDiffText = "+8枚"; }
  else if (roleName === "14枚ベル") { payout = 14; soundWinSmall(); medalDiffText = "+14枚"; }
@@ -624,14 +632,15 @@ function playSlot() {
   soundRare(); medalDiffText = `+${payout}枚`; triggerLock = true;
  } else { soundStart(); }
  
- netSamai += payout; 
+ netSamai += (roleName === "リプレイ" ? 0 : payout); // 差枚表示用
+ totalOutMedals += payout; // 機械割計算用アウトカウンター
 
  // AT（BIG）中の差枚数管理
  if (currentMode === "BIG" && currentMode !== "BONUS_READY" && !battleFailedGraceG) {
   if (roleName === "リプレイ") {
    // 現状維持
   } else {
-   let netGainThisG = payout - 3;
+   let netGainThisG = (roleName === "リプレイ" ? 3 : payout) - 3;
    atRemainingMedal -= netGainThisG;
   }
  }
@@ -649,12 +658,16 @@ function playSlot() {
  if (currentMode === "PETIT_BONUS" && isPbFinishedG) {
   isPbFinishedG = false; 
   triggerLock = true;
+  
+  // ★ プチボーナスの純増獲得枚数を計算
+  let pbGain = netSamai - pbStartSamai;
+
   if (pbAtHit) {
    currentMode = "BONUS_READY";
    document.getElementById("reel1").innerText = "7️⃣";
    document.getElementById("reel2").innerText = "7️⃣";
    document.getElementById("reel3").innerText = "7️⃣";
-   document.getElementById("msgDisplay").innerHTML = `<div>ジャッジレバー [±0枚]</div><br><span style="color:#00e676; font-size:22px; font-weight:bold;">🎉 777揃い発生！メインAT当選！ 🎉</span>`;
+   document.getElementById("msgDisplay").innerHTML = `<div>プチボーナス終了（獲得：${pbGain}枚）</div><br><span style="color:#00e676; font-size:22px; font-weight:bold;">🎉 777揃い発生！メインAT当選！ 🎉</span>`;
    soundBonusReady();
   } else {
    currentMode = "NORMAL";
@@ -663,7 +676,7 @@ function playSlot() {
    document.getElementById("reel1").innerText = "7️⃣";
    document.getElementById("reel2").innerText = "7️⃣";
    document.getElementById("reel3").innerText = "🔄"; 
-   document.getElementById("msgDisplay").innerHTML = `<div>ジャッジレバー [±0枚]</div><br><span style="color:#7f8c8d; font-size:18px;">無念…7が外れて通常ステージへ [通算${pbThroughCount}スルー]</span>`;
+   document.getElementById("msgDisplay").innerHTML = `<div>プチボーナス終了（獲得：${pbGain}枚）</div><br><span style="color:#7f8c8d; font-size:18px;">無念…7が外れて通常ステージへ [通算${pbThroughCount}スルー]</span>`;
    soundBonusEnd();
   }
   updateSlotDisplay(); if (triggerLock) lockPlayButton(); return;
@@ -676,44 +689,16 @@ function playSlot() {
   pbBellCount = 0;
   pbAtHit = false;
   isPbFinishedG = false;
+  pbStartSamai = netSamai; // ★ 獲得枚数計測スタート！
+  
+  // 確定画面のダミー払い出し補正（機械割用）
+  totalOutMedals += 3;
+
   document.getElementById("reel1").innerText = "7️⃣";
   document.getElementById("reel2").innerText = "7️⃣";
   document.getElementById("reel3").innerText = "🧭"; 
   document.getElementById("msgDisplay").innerHTML = `<div>77BAR揃い [±0枚]</div><br><span style="color:#ff9800; font-weight:bold;">🟢 プチボーナス開始！(14枚ベル8回で終了) 🟢</span>`;
   soundBonusStart();
-  updateSlotDisplay(); if (triggerLock) lockPlayButton(); return;
- }
-
- /* ★ 修正点②：リザルト画面のレバーON（RESULTモード） */
- if (currentMode === "RESULT") {
-  triggerLock = true;
-  
-  if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
-   currentMode = "BIG";
-   atRemainingMedal = 150; 
-   battleState = "NONE";
-   battleFailedGraceG = false;
-   wasZeroMedalLastG = false;
-   document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#00e676; font-size:22px; font-weight:bold;">🔥 起死回生！レア役からAT復活確定！(+150枚) 🔥</span>`;
-   addSlotHistory(`リザルト画面からレア役復活！[契機:${roleName}]`);
-   soundBonusStart();
-  } else {
-   // レア役を引けなかった場合は「余分な1Gを追加せず」このゲームで通常時（0G）へ移行完了させる
-   currentMode = "NORMAL";
-   normalGames = 0;
-   
-   if (Math.random() < 0.15) {
-    isHikimodoshiMode = true;
-    hikimodoshiGames = 0;
-    addSlotHistory(`AT終了➔内部引き戻しモードに当選(最大32G)`);
-   } else {
-    isHikimodoshiMode = false;
-    addSlotHistory(`AT終了➔引き戻し非当選、通常へ`);
-   }
-   
-   document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:gray;">復活ならず… 通常ステージへ戻ります</span>`;
-   soundBonusEnd();
-  }
   updateSlotDisplay(); if (triggerLock) lockPlayButton(); return;
  }
 
@@ -774,7 +759,6 @@ function playSlot() {
   if (isTargetGame && zenchoRemaining === 0) {
    let gRoll = Math.random();
    let gProb = 0;
-   // ★ 修正点③：50Gでの解除期待度をきっちり指示通りの「12.5%」に引き下げ！重複当選のすり抜けを防止
    if (normalGames === 50) gProb = 0.125; 
    else if (normalGames === 100) gProb = 0.33;
    else if (normalGames === 150) gProb = 0.125;
@@ -844,7 +828,7 @@ function playSlot() {
      nextSerifuInterval = Math.floor(Math.random() * 3) + 1;
     } else { nextSerifuInterval--; }
    }
-  } else if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName) && zenchoRemaining === 0) {
+  } else if (["弱スイ加", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName) && zenchoRemaining === 0) {
    isZenchoHit = rareHit;
    zenchoRemaining = Math.floor(Math.random() * 7) + 6; 
    nextSerifuInterval = 0;
@@ -879,6 +863,10 @@ function playSlot() {
  } else if (currentMode === "BONUS_READY") {
   bonusStartSamai = netSamai; 
   triggerLock = true; 
+  
+  // 機械割ダミー補正
+  totalOutMedals += 3;
+
   document.getElementById("reel1").innerText = "7️⃣";
   document.getElementById("reel2").innerText = "7️⃣";
   document.getElementById("reel3").innerText = "7️⃣";
@@ -904,12 +892,35 @@ function playSlot() {
  } else if (currentMode === "BIG") {
   totalBigGames++;
 
-  // ★ 修正点②：泣きのラスト1G消化後は無駄なウェイトを挟まず直接RESULTモード（リザルト画面）へ
+  // ★ ① 修正：泣きのラスト1GレバーON時（ここでレア役を引けば即時復活判定へ割り込み！）
   if (battleFailedGraceG) {
    battleFailedGraceG = false;
-   currentMode = "RESULT";
-   lastCalculatedGain = netSamai - bonusStartSamai;
-   document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#795548; font-size:20px;">📊 ATリザルト画面 📊<br>獲得枚数：${lastCalculatedGain}枚<br><span style="color:#fff; font-size:16px;">運命のラストレバー！レア役を引けば復帰確定！</span></span>`;
+   
+   if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
+    // レア役復帰成功！
+    atRemainingMedal = 150; 
+    battleState = "NONE";
+    wasZeroMedalLastG = false;
+    document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#00e676; font-size:22px; font-weight:bold;">🔥 ガチ復活!! 0枚目のレバーでレア役引き戻し成功！(+150枚) 🔥</span>`;
+    addSlotHistory(`AT終了のレバーでレア役復活！[契機:${roleName}]`);
+    soundBonusStart();
+   } else {
+    // 漏れた場合は「リザルト画面を挟まずに」そのまま即時通常時（0G）へ転落完了！
+    currentMode = "NORMAL";
+    normalGames = 0;
+    lastCalculatedGain = netSamai - bonusStartSamai;
+    
+    if (Math.random() < 0.15) {
+     isHikimodoshiMode = true;
+     hikimodoshiGames = 0;
+     addSlotHistory(`AT終了➔内部引き戻しモードに当選(最大32G)`);
+    } else {
+     isHikimodoshiMode = false;
+     addSlotHistory(`AT終了➔引き戻し非当選、通常へ`);
+    }
+    document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#795548; font-size:20px;">📊 AT終了 📊<br>最終獲得：${lastCalculatedGain}枚<br><span style="color:gray; font-size:14px;">通常ステージへ戻ります</span></span>`;
+    soundBonusEnd();
+   }
    updateSlotDisplay();
    return;
   }
@@ -919,7 +930,7 @@ function playSlot() {
    bZenchoRemaining = 1; 
   }
 
-  // 通常AT中に残り0枚に到達した「次のレバーON」の判定
+  // 通常AT中に残り0枚に到達した「次のレバーON」の判定（ここも同じくリザルトを挟まずガチ判定）
   if (wasZeroMedalLastG && battleState === "NONE") {
    wasZeroMedalLastG = false; 
    
@@ -937,10 +948,29 @@ function playSlot() {
     atCurrentGames = 0;
     atRemainingMedal = 0; 
    } else {
-    // 救済漏れ時は直接リザルト画面（RESULT）に移行させてガチ復活チャンスへ
-    currentMode = "RESULT";
-    lastCalculatedGain = netSamai - bonusStartSamai;
-    document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#795548; font-size:20px;">📊 ATリザルト画面 📊<br>獲得枚数：${lastCalculatedGain}枚<br><span style="color:#fff; font-size:16px;">運命のラストレバー！レア役を引けば復帰確定！</span></span>`;
+    // 救済書き換えに漏れた時、このレバーでレア役なら復活、違えばそのまま通常へ即落とし！
+    if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
+     atRemainingMedal = 150; 
+     battleState = "NONE";
+     document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#00e676; font-size:22px; font-weight:bold;">🔥 ガチ復活!! 0枚目のレバーでレア役引き戻し成功！(+150枚) 🔥</span>`;
+     addSlotHistory(`0枚目のレバーでレア役復活！[契機:${roleName}]`);
+     soundBonusStart();
+    } else {
+     currentMode = "NORMAL";
+     normalGames = 0;
+     lastCalculatedGain = netSamai - bonusStartSamai;
+     
+     if (Math.random() < 0.15) {
+      isHikimodoshiMode = true;
+      hikimodoshiGames = 0;
+      addSlotHistory(`AT終了➔内部引き戻しモードに当選(最大32G)`);
+     } else {
+      isHikimodoshiMode = false;
+      addSlotHistory(`AT終了➔引き戻し非当選、通常へ`);
+     }
+     document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#795548; font-size:20px;">📊 AT終了 📊<br>最終獲得：${lastCalculatedGain}枚<br><span style="color:gray; font-size:14px;">通常ステージへ戻ります</span></span>`;
+     soundBonusEnd();
+    }
     updateSlotDisplay();
     return;
    }
@@ -1077,7 +1107,7 @@ function playSlot() {
 
     if (atRemainingMedal <= 0) {
      battleFailedGraceG = true; 
-     bSerifuHTML += `<br><span style="color:#e53935; font-weight:bold;">⚠️ 残り0枚：次ゲーム、リザルト画面へ移行します。</span>`;
+     bSerifuHTML += `<br><span style="color:#e53935; font-weight:bold;">⚠️ 残り0枚：次ゲーム終了判定です。</span>`;
     }
    }
    document.getElementById("msgDisplay").innerHTML = payMsgHTML + bSerifuHTML;
@@ -1100,7 +1130,7 @@ function playSlot() {
 
    if (enemyType !== "ゴッデス") {
     if (isBattle1G連Loop) {
-     // ループ継続
+     // ループ
     } else if (Math.random() < 0.10) {
      isBattle1G連Loop = true; 
     }
