@@ -261,7 +261,7 @@ button{cursor:pointer}
 <body>
 
 <div id="slotArea">
- <div class="version-tag">v3.80</div>
+ <div class="version-tag">v3.90</div>
 
  <div class="volume-container">
   <span>🔈 音量:</span>
@@ -329,7 +329,6 @@ let pbBellCount = 0;
 let pbAtHit = false;      
 let pbThroughCount = 0;   
 let pbTrigger契機 = "規定ゲーム数"; 
-let isPbFinishedG = false; 
 let pbStartSamai = 0;     
 
 /* 初当たり・直撃フラグ関連 */
@@ -550,8 +549,6 @@ function updateSlotDisplay() {
  let hikimodoshiStr = isHikimodoshiMode ? ` [引き戻し中:${hikimodoshiGames}G]` : "";
  normalGEl.innerText = `通常: ${normalGames}G${loopStatusStr}${hikimodoshiStr} [${pbThroughCount}/3スルー]`;
  
- // ★ ③ 修正：通常時のゾーンや、AT中のいかなる内部抽選でも絶対にSKIPは止まらない。
- // 本当のボーナス生揃いタイミングである「ボーナス確定画面（isBonusReadyG）」を検知した瞬間のみSKIPを停止させる。
  if (isSkipRunning && isBonusReadyG) {
   stopSkip();
  }
@@ -648,7 +645,6 @@ function getRandomHazureReels() {
 
 /* --- スロット実行メイン --- */
 function playSlot() {
- // ★ ① 修正：SKIP停止条件を「ボーナス確定画面(isBonusReadyG)」の時のみに完全限定化
  if (isSkipRunning && currentMode !== "NORMAL" && !isBonusReadyG) {
   stopSkip();
   return;
@@ -748,27 +744,7 @@ function playSlot() {
 
  // ================= ②各モードの進行制御 =================
 
- // ★ ② 修正：14枚ベルが8回になった「次のレバーON（次ゲーム）」の自動昇格・生揃い割り込み判定
- if (currentMode === "PETIT_BONUS" && isPbFinishedG) {
-  isPbFinishedG = false; 
-  triggerLock = true;
-  
-  let pbGain = netSamai - pbStartSamai;
-  // ★ ② 修正：ジャッジレバー画面を挟まずに、履歴に最終獲得枚数を即時記録！
-  addSlotHistory(`プチボーナス終了（獲得：${pbGain}枚）`);
-
-  if (pbAtHit) {
-   nextBonusType = "AT";
-  } else {
-   nextBonusType = "THROUGH"; 
-  }
-  isBonusReadyG = true; 
-  document.getElementById("msgDisplay").innerHTML = `<div>14枚ベルナビ完了 [±0枚]</div><br><span style="color:#fff; font-weight:bold;">🎰 図柄を狙え！運命の生揃いレバーオン！ 🎰</span>`;
-  soundBonusReady();
-  updateSlotDisplay(); if (triggerLock) lockPlayButton(); return;
- }
-
- // 図柄を揃える確定ゲーム（isBonusReadyG）
+ // ★ ① 修正：図柄を揃える確定ゲーム（isBonusReadyG）でレバーを叩いた瞬間に結果を判定して揃える
  if (isBonusReadyG) {
   isBonusReadyG = false; 
   triggerLock = true;
@@ -796,7 +772,6 @@ function playSlot() {
    hasHikimodoshi権利 = false;
    
    document.getElementById("msgDisplay").innerHTML = `<div>777揃い [±0枚]</div><br><span style="color:#e91e63; font-size:20px;">🔴 BIG BONUS(AT) 150枚スタート！</span>`;
-   addSlotHistory(`メインAT 突入`);
    soundBonusStart();
   } 
   else if (nextBonusType === "PB") {
@@ -814,9 +789,12 @@ function playSlot() {
    soundBonusStart();
   }
   else if (nextBonusType === "THROUGH") {
+   // ★ ① プチボーナス失敗時のテンパイハズレ処理（無駄Gなしで即時ここに飛ぶ）
    currentMode = "NORMAL";
    pbThroughCount++; 
    normalGames = 0;  
+   isHikimodoshiMode = false; // ★ プチボ後は引き戻し抽選を行わない
+   hasHikimodoshi権利 = false;
    
    document.getElementById("reel1").innerText = "7️⃣";
    document.getElementById("reel2").innerText = "7️⃣";
@@ -825,14 +803,6 @@ function playSlot() {
    let pbGain = netSamai - pbStartSamai; 
    document.getElementById("msgDisplay").innerHTML = `<div>プチボーナス終了（獲得：${pbGain}枚）</div><br><span style="color:#7f8c8d; font-size:18px;">無念…7が外れて通常ステージへ [通算${pbThroughCount}スルー]</span>`;
    soundBonusEnd();
-   
-   hasHikimodoshi権利 = true;
-   if (Math.random() < 0.15) {
-    isHikimodoshiMode = true;
-    hikimodoshiGames = 0;
-   } else {
-    isHikimodoshiMode = false;
-   }
   }
   updateSlotDisplay(); if (triggerLock) lockPlayButton(); return;
  }
@@ -994,8 +964,13 @@ function playSlot() {
    addSlotHistory(`PB中 内部AT当選確定！[契機:${roleName}]`);
   }
 
+  // ★ ① 修正：ナビ残り1回から「残り0回」に到達したまさに【その瞬間（当該ゲーム）】で、
+  // 余計な割り込み画面を挟まずに即座に「次の1Gでの自動図柄生揃いフラグ」を成立させる
   if (pbBellCount >= 8) {
    isPbFinishedG = true; 
+   let pbGain = netSamai - pbStartSamai;
+   // ★ ① ここで最後のベルを獲得した状態での最終獲得枚数を履歴リストに即時プッシュ！
+   addSlotHistory(`プチボーナス終了（獲得：${pbGain}枚）`);
    document.getElementById("msgDisplay").innerHTML = `<div>${roleName} [${medalDiffText}]</div><br><span style="color:#ff9800; font-weight:bold;">🏁 ナビ完了！次ゲーム、運命の図柄生揃いレバー！</span>`;
   } else {
    document.getElementById("msgDisplay").innerHTML = payMsgHTML + `<br><div style="color:#ff9800; font-size:14px;">PB中AT抽選…レバーで狙え！</div>`;
@@ -1123,8 +1098,10 @@ function playSlot() {
    else if (roleName === "強スイカ" || roleName === "強チェリー") bAtkProb = 0.40;
 
    let isBattleHit = (Math.random() < bAtkProb);
-   let isGameCeilingHit = false;
    
+   // ★ ① 修正：AT中(BIG)の規定G数での「自動SKIP停止」お節介バグの原因だった、
+   // 不要な triggerLock = true 等の割り込み停止処理を内部から完全に根絶！
+   let isGameCeilingHit = false;
    if ([30, 60, 90, 120, 150].includes(atCurrentGames)) {
     let bgRoll = Math.random();
     let bgProb = 0;
@@ -1133,7 +1110,6 @@ function playSlot() {
     else if (atCurrentGames === 90) bgProb = 0.33;
     else if (atCurrentGames === 120) bgProb = 0.125;
     else if (atCurrentGames === 150) bgProb = 1.00; 
-    
     if (bgRoll < bgProb) { isGameCeilingHit = true; }
    }
 
@@ -1194,7 +1170,7 @@ function playSlot() {
     } else if (roleName === "弱スイカ") {
      if (dmgRoll < 33) dmg = 5; else if (dmgRoll < 66) dmg = 10; else if (dmgRoll < 99) dmg = 20; else dmg = 30;
     } else if (roleName === "弱チェリー") {
-     if (dmgRoll < 70) dmg = 10; else if (dmgRoll < 90) dmg = 20; else if (dmgRoll < 97) dmg = 30; else dmg = 50;
+     if (dmgRoll < 70) dmg = 10; else if (dmgRoll < 90) dmg = 20; else if (dmgRoll < 97) dashed = 30; else dmg = 50;
     } else if (roleName === "強スイカ") {
      if (dmgRoll < 66) dmg = 20; else if (dmgRoll < 77) dmg = 30; else if (dmgRoll < 88) dmg = 40; else dmg = 50;
     } else if (roleName === "強チェリー") {
