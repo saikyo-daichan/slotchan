@@ -213,7 +213,7 @@ button{cursor:pointer}
 
 <div id="slotArea">
  <!-- ★最上部にバージョン表記を追加 -->
- <div class="version-tag">v2.01</div>
+ <div class="version-tag">v2.02</div>
 
  <div class="slot-header">
   <div class="header-buttons">
@@ -287,6 +287,9 @@ let isGoddesLoop = false;
 
 /* バトル失敗後、1Gだけ猶予を持たせるための管理フラグ */
 let battleFailedGraceG = false;
+
+/* 前回ゲーム終了時点で残り0枚だったか（次ゲーム判定用） */
+let wasZeroMedalLastG = false;
 
 /* ★コンボシステム */
 let lastWasWeakRare = false;
@@ -400,7 +403,7 @@ function lockPlayButton() {
  }, 1000);
 }
 
-// 🟢 SKIP（自動遊技）の開始 / 停止切り替え
+// SKIP（自動遊技）の開始 / 停止切り替え
 function toggleSkip() {
  initAudio();
  const skipBtn = document.getElementById("mainSkipBtn");
@@ -418,7 +421,6 @@ function toggleSkip() {
   skipBtn.style.backgroundColor = "#e53935";
   playBtn.disabled = true;
   
-  // ★ 0.3秒ごとに1G回すループ
   skipTimer = setInterval(() => {
    if (currentMode !== "NORMAL") {
     stopSkip();
@@ -482,8 +484,7 @@ function updateSlotDisplay() {
   totalBBEl.style.display = "block";
   document.getElementById("mainPlayBtn").innerText = "PLAY";
 
-  // ★ ② 修正：前兆やバトル中であっても、枚数が1枚以上あれば「隠蔽（LAST ?枚）」にしない。
-  // 本当に残り枚数が0枚の時、またはバトル敗北後の「泣きのラスト1G」の時だけ「LAST ?枚」にする。
+  // ★ ② 修正：本当に「現在の残り枚数が0枚」か「泣きのラスト1G」の時だけ「LAST ?枚」にする
   let showQuestionMedal = (atRemainingMedal <= 0 || battleFailedGraceG);
   let medalDisplayStr = showQuestionMedal ? "LAST ?枚" : `LAST ${atRemainingMedal}枚`;
 
@@ -567,7 +568,7 @@ function playSlot() {
   isReplayG = true; 
  }
 
- // メダル消費判定
+ // メダル消費判定（プレイヤーの手持ち用）
  if (isReplayG) {
   isReplayG = false; 
  } else {
@@ -626,20 +627,20 @@ function playSlot() {
  
  netSamai += payout; 
 
- // ★ ① 修正：AT中の正確な差枚数管理
- // 3枚消費をベースに持ち、ハズレ時は純粋に「前のゲームより残り枚数が3枚増える」ように調整
+ // ★ ① 修正：AT（BIG）中の正確な純増・差枚数管理
  if (currentMode === "BIG" && currentMode !== "BONUS_READY" && !battleFailedGraceG) {
   if (roleName === "リプレイ") {
-   // リプレイは増減なし
+   // リプレイは現状維持
   } else if (roleName === "ハズレ") {
-   // レバーオン消費(-3枚)を考慮し、それを上回る+6枚を入れることで、画面上「+3枚増える」ようにする
-   atRemainingMedal += 6;
+   // 前画面のLAST表示から、純粋に「ぴったり3枚増える」
+   atRemainingMedal += 3;
   } else {
-   // ベルやレア役成立時は、レバーオン消費(-3枚)した上で、払い出し枚数(payout分)がベースからマイナスされる
-   atRemainingMedal = (atRemainingMedal - 3) - payout;
+   // ベルやレア役：レバーONでの3枚消費と払い出しの差分ではなく、
+   // 「払い出しのあった枚数(payout)」から「3枚掛け分」を引いた純増分だけ、ベースの残り差枚数が確実に削られる。
+   // 例：14枚ベルなら、14 - 3 = 11枚が手元に増えるので、残り差枚数は「14枚」きっちり減る。
+   atRemainingMedal -= payout;
   }
-  // マイナスに突き抜けた場合は0で固定
-  if (atRemainingMedal < 0) atRemainingMedal = 0;
+  // この時点ではまだマイナス丸めをせず、移行判定で0枚以下かどうかを見る
  }
 
  let payMsgHTML = `<div>${roleName} [${medalDiffText}]</div>`;
@@ -774,6 +775,7 @@ function playSlot() {
   battleState = "NONE";
   isCeilingShortened = false;
   battleFailedGraceG = false; 
+  wasZeroMedalLastG = false; // 初期化
   
   document.getElementById("msgDisplay").innerHTML = `<div>777揃い [±0枚]</div><br><span style="color:#e91e63; font-size:20px;">🔴 BIG BONUS(AT) 150枚スタート！</span>`;
   addSlotHistory(`${normalGames}G → AT突入`);
@@ -783,7 +785,7 @@ function playSlot() {
  } else if (currentMode === "BIG") {
   totalBigGames++;
 
-  // ② 泣きのラスト1G消化後のリザルト移行
+  // ★ ② 修正：泣きのラスト1GレバーONで、何事もなければここで初めてリザルトへ移行
   if (battleFailedGraceG) {
    battleFailedGraceG = false;
    currentMode = "RESULT";
@@ -792,6 +794,36 @@ function playSlot() {
    addSlotHistory(`AT終了（獲得:${lastCalculatedGain}枚）`);
    updateSlotDisplay();
    return;
+  }
+
+  // ★ ② 修正：「前回のレバーオン時点で残り0枚以下」だった場合の次ゲーム移行判定
+  if (wasZeroMedalLastG && battleState === "NONE") {
+   wasZeroMedalLastG = false; // フラグクリア
+   
+   // 通常のバトル当選確率
+   let bAtkProb = 0;
+   if (roleName === "弱スイカ") bAtkProb = 0.03;
+   else if (roleName === "弱チェリー") bAtkProb = 0.0625;
+   else if (roleName === "強スイカ" || roleName === "強チェリー") bAtkProb = 0.40;
+   
+   let isBattleHit = (Math.random() < bAtkProb);
+   let zeroCoinRescueHit = (Math.random() < 0.25); // 0枚目救済25%
+   
+   if (isBattleHit || isGoddesLoop || zeroCoinRescueHit) {
+    battleState = "PRE"; bZenchoRemaining = 2; 
+    let srcText = isGoddesLoop ? "ゴッデス1G連" : (zeroCoinRescueHit ? "0枚目救済抽選" : roleName);
+    addSlotHistory(`残り0枚の次ゲームレバーで書き換え成功！ [契機:${srcText}]`);
+    atCurrentGames = 0;
+    atRemainingMedal = 0; // 0枚維持
+   } else {
+    // 抽選漏れはここでリザルト移行
+    currentMode = "RESULT";
+    lastCalculatedGain = netSamai - bonusStartSamai;
+    document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#795548; font-size:20px;">📊 リザルト画面 📊<br>獲得枚数：${lastCalculatedGain}枚</span>`;
+    addSlotHistory(`AT終了（0枚次Gでの救済漏れ、獲得:${lastCalculatedGain}枚）`);
+    updateSlotDisplay();
+    return;
+   }
   }
 
   if (battleState === "NONE") {
@@ -826,7 +858,7 @@ function playSlot() {
     soundUwanose告知();
    }
 
-   // 通常のバトル判定フラグ
+   // 通常のバトル判定フラグ（まだ枚数がある場合のみ有効な前兆に入る）
    let bAtkProb = 0;
    if (roleName === "弱スイカ") bAtkProb = 0.03;
    else if (roleName === "弱チェリー") bAtkProb = 0.0625;
@@ -847,34 +879,23 @@ function playSlot() {
     if (bgRoll < bgProb) { isGameCeilingHit = true; }
    }
 
-   // ★ ② 残り0枚になった瞬間の救済・前兆移行処理
+   if (isBattleHit || isGameCeilingHit || isGoddesLoop) {
+    battleState = "PRE"; bZenchoRemaining = 2; 
+    let srcText = isGameCeilingHit ? `AT内G数:${atCurrentGames}G` : (isGoddesLoop ? "ゴッデス1G連" : roleName);
+    addSlotHistory(`AT中 バトル前兆突入 [契機:${srcText}]`);
+    atCurrentGames = 0; 
+   }
+
+   // ★ ② 修正：このゲームの払い出し計算後に残り0枚以下になった場合、
+   // ここでは即終了せず、「0枚になった画面」を表示させたまま次ゲームへ持ち越す
    if (atRemainingMedal <= 0) {
-    let zeroCoinRescueHit = (Math.random() < 0.25);
-    
-    if (isBattleHit || isGameCeilingHit || isGoddesLoop || zeroCoinRescueHit) {
-     battleState = "PRE"; bZenchoRemaining = 2; 
-     let srcText = isGameCeilingHit ? `AT内G数:${atCurrentGames}G` : (isGoddesLoop ? "ゴッデス1G連" : (zeroCoinRescueHit ? "0枚目救済" : roleName));
-     addSlotHistory(`残り0枚から前兆書き換え成功！ [契機:${srcText}]`);
-     atCurrentGames = 0; 
-     document.getElementById("msgDisplay").innerHTML = payMsgHTML + currentRewardHTML;
-    } else {
-     currentMode = "RESULT";
-     lastCalculatedGain = netSamai - bonusStartSamai;
-     document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#795548; font-size:20px;">📊 リザルト画面 📊<br>獲得枚数：${lastCalculatedGain}枚</span>`;
-     addSlotHistory(`AT終了（0枚時抽選漏れ、獲得:${lastCalculatedGain}枚）`);
-    }
-   } else {
-    // 枚数がある場合は通常の前兆移行
-    if (isBattleHit || isGameCeilingHit || isGoddesLoop) {
-     battleState = "PRE"; bZenchoRemaining = 2; 
-     let srcText = isGameCeilingHit ? `AT内G数:${atCurrentGames}G` : (isGoddesLoop ? "ゴッデス1G連" : roleName);
-     addSlotHistory(`AT中 バトル前兆突入 [契機:${srcText}]`);
-     atCurrentGames = 0; 
-     document.getElementById("msgDisplay").innerHTML = payMsgHTML + currentRewardHTML;
-    } else {
-     document.getElementById("msgDisplay").innerHTML = payMsgHTML + currentRewardHTML;
+    atRemainingMedal = 0;
+    // 前兆やバトルに入っていなければ、次ゲームのレバーON時に救済判定を行うためのフラグを立てる
+    if (battleState === "NONE") {
+     wasZeroMedalLastG = true;
     }
    }
+   document.getElementById("msgDisplay").innerHTML = payMsgHTML + currentRewardHTML;
 
   /* --- バトル前兆画面 --- */
   } else if (battleState === "PRE") {
@@ -936,7 +957,7 @@ function playSlot() {
     bSerifuHTML += `<div style="color:#7f8c8d;">不覚……！逃げられてしまった。</div>`;
     soundBonusEnd();
     
-    // ② バトル中に残り枚数が0枚になって勝利できなかった場合
+    // ★ ② 修正：バトル敗北時に残り枚数が0枚だった場合、即終了させず、次の1Gを「泣きの猶予（延命）」にする
     if (atRemainingMedal <= 0) {
      battleFailedGraceG = true; 
      bSerifuHTML += `<br><span style="color:#e53935; font-weight:bold;">⚠️ 残り0枚：次ゲーム、リザルト画面へ移行します。</span>`;
