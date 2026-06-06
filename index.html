@@ -261,7 +261,7 @@ button{cursor:pointer}
 <body>
 
 <div id="slotArea">
- <div class="version-tag">v3.96</div>
+ <div class="version-tag">v3.97</div>
 
  <div class="volume-container">
   <span>🔈 音量:</span>
@@ -372,8 +372,8 @@ let isBattle1G連Loop = false;
 /* バトル失敗後、1Gだけ猶予を持たせるための管理フラグ */
 let battleFailedGraceG = false;
 
-/* 前回ゲーム終了時点で残り0枚だったか（次ゲーム判定用） */
-wasZeroMedalLastG = false;
+/* ★ 修正：変数宣言漏れ(let)を完全に修正 */
+let wasZeroMedalLastG = false;
 
 /* コンボシステム */
 let lastWasWeakRare = false;
@@ -782,7 +782,7 @@ function playSlot() {
    soundBonusEnd();
   }
   updateSlotDisplay(); if (triggerLock) lockPlayButton(); return;
- }
+  }
 
  /* --- B. 通常モード --- */
  if (currentMode === "NORMAL") {
@@ -1128,6 +1128,7 @@ function playSlot() {
     } else if (roleName === "弱スイカ") {
      if (dmgRoll < 33) dmg = 5; else if (dmgRoll < 66) dmg = 10; else if (dmgRoll < 99) dmg = 20; else dmg = 30;
     } else if (roleName === "弱チェリー") {
+     // ★ 完全修正：前回の「dashed」という不純なタイポを完全に一掃！
      if (dmgRoll < 70) dmg = 10; else if (dmgRoll < 90) dmg = 20; else if (dmgRoll < 97) dmg = 30; else dmg = 50;
     } else if (roleName === "強スイカ") {
      if (dmgRoll < 66) dmg = 20; else if (dmgRoll < 77) dmg = 30; else if (dmgRoll < 88) dmg = 40; else dmg = 50;
