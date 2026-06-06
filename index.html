@@ -261,7 +261,7 @@ button{cursor:pointer}
 <body>
 
 <div id="slotArea">
- <div class="version-tag">v3.95</div>
+ <div class="version-tag">v3.96</div>
 
  <div class="volume-container">
   <span>🔈 音量:</span>
@@ -373,7 +373,7 @@ let isBattle1G連Loop = false;
 let battleFailedGraceG = false;
 
 /* 前回ゲーム終了時点で残り0枚だったか（次ゲーム判定用） */
-let wasZeroMedalLastG = false;
+wasZeroMedalLastG = false;
 
 /* コンボシステム */
 let lastWasWeakRare = false;
@@ -782,7 +782,7 @@ function playSlot() {
    soundBonusEnd();
   }
   updateSlotDisplay(); if (triggerLock) lockPlayButton(); return;
-  }
+ }
 
  /* --- B. 通常モード --- */
  if (currentMode === "NORMAL") {
@@ -855,17 +855,16 @@ function playSlot() {
 
   if (isTargetGame && zenchoRemaining === 0) {
    let gRoll = Math.random();
-   let gProb = 0;
-   if (normalGames === 50) gProb = 0.125; 
-   else if (normalGames === 100) gProb = 0.33;
-   else if (normalGames === 150) gProb = 0.125;
-   else if (normalGames === 200) gProb = 0.50; 
-   else if (normalGames === 250) gProb = 0.25;
-   
-   if (gRoll < gProb) { 
-    isZenchoHit = true; 
-    pbTrigger契機 = "規定ゲーム数";
-    zenchoRemaining = Math.floor(Math.random() * 7) + 6; 
+   if (normalGames === 50) {
+    if (gRoll < 0.125) { isZenchoHit = true; pbTrigger契機 = "規定ゲーム数"; zenchoRemaining = Math.floor(Math.random() * 7) + 6; }
+   } else if (normalGames === 100) {
+    if (gRoll < 0.33) { isZenchoHit = true; pbTrigger契機 = "規定ゲーム数"; zenchoRemaining = Math.floor(Math.random() * 7) + 6; }
+   } else if (normalGames === 150) {
+    if (gRoll < 0.125) { isZenchoHit = true; pbTrigger契機 = "規定ゲーム数"; zenchoRemaining = Math.floor(Math.random() * 7) + 6; }
+   } else if (normalGames === 200) {
+    if (gRoll < 0.50) { isZenchoHit = true; pbTrigger契機 = "規定ゲーム数"; zenchoRemaining = Math.floor(Math.random() * 7) + 6; }
+   } else if (normalGames === 250) {
+    if (gRoll < 0.25) { isZenchoHit = true; pbTrigger契機 = "規定ゲーム数"; zenchoRemaining = Math.floor(Math.random() * 7) + 6; }
    }
    nextSerifuInterval = 0; 
   }
