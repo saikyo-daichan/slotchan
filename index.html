@@ -261,7 +261,7 @@ button{cursor:pointer}
 <body>
 
 <div id="slotArea">
- <div class="version-tag">v3.93</div>
+ <div class="version-tag">v3.94</div>
 
  <div class="volume-container">
   <span>🔈 音量:</span>
@@ -614,10 +614,10 @@ function playSlot() {
   return;
  }
 
- // プチボーナスが8回引き終わった状態（isPbFinishedG）なら即確定画面に移行させて脱出させる
+ // プチボーナスが8回引き終わった状態（isPbFinishedG）なら、最優先で大当り確定画面（生揃い準備）へ飛ばす
  if (currentMode === "PETIT_BONUS" && isPbFinishedG) {
   isPbFinishedG = false; 
-  triggerLock = true;
+  let triggerLock = true;
   
   if (pbAtHit) {
    nextBonusType = "AT";
@@ -724,7 +724,7 @@ function playSlot() {
  // 図柄を揃えるゲーム（isBonusReadyG）
  if (isBonusReadyG) {
   isBonusReadyG = false; 
-  triggerLock = true;
+  let triggerLock = true;
   totalOutMedals += 3; 
 
   if (nextBonusType === "AT") {
@@ -818,7 +818,7 @@ function playSlot() {
     
     nextBonusType = "AT";
     isBonusReadyG = true;
-    triggerLock = true;
+    let triggerLock = true;
     
     document.getElementById("msgDisplay").innerHTML = `<div>${payMsgHTML}</div><br><span style="color:#00e676; font-weight:bold;">🎉 歓喜!! 引き戻し成功！図柄を揃えろ！ 🎉</span>`;
     addSlotHistory(`通常 ${normalGames}G ➔ 引き戻し成功！メインAT復帰！`);
@@ -871,7 +871,7 @@ function playSlot() {
   }
 
   if (zenchoRemaining > 0 && zenchoRemaining - 1 === 0 && isZenchoHit) {
-   triggerLock = true;
+   let triggerLock = true;
    zenchoRemaining = 0;
    isHikimodoshiMode = false; 
    hikimodoshiGames = 0;
@@ -1129,7 +1129,8 @@ function playSlot() {
     } else if (roleName === "弱スイカ") {
      if (dmgRoll < 33) dmg = 5; else if (dmgRoll < 66) dmg = 10; else if (dmgRoll < 99) dmg = 20; else dmg = 30;
     } else if (roleName === "弱チェリー") {
-     if (dmgRoll < 70) dmg = 10; else if (dmgRoll < 90) dmg = 20; else if (dmgRoll < 97) dashed = 30; else dmg = 50;
+     // ★ ここに入っていた謎の「dashed」タイポを完璧にクレンジング！
+     if (dmgRoll < 70) dmg = 10; else if (dmgRoll < 90) dmg = 20; else if (dmgRoll < 97) dmg = 30; else dmg = 50;
     } else if (roleName === "強スイカ") {
      if (dmgRoll < 66) dmg = 20; else if (dmgRoll < 77) dmg = 30; else if (dmgRoll < 88) dmg = 40; else dmg = 50;
     } else if (roleName === "強チェリー") {
