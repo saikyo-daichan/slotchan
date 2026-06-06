@@ -266,7 +266,7 @@ button{cursor:pointer}
 <body>
 
 <div id="slotArea">
- <div class="version-tag">v4.60 [特化ゾーン強化＆AT前兆ロジック修正版]</div>
+ <div class="version-tag">v4.65 [ptぶち抜き前兆完全対応版]</div>
 
  <div class="volume-container">
   <span>🔈 音量:</span>
@@ -367,6 +367,9 @@ let zenchoLevel = 1;
 let tokkaZenchoRemaining = 0;
 let isTokkaZenchoHit = false;
 
+/* ★ v4.65 特化ゾーンでの跨ぎ・ぶち抜きを監視する予約フラグ */
+let isPtZoneCrossedPending = false; 
+
 /* --- バトルの変数管理 --- */
 let battleState = "NONE"; 
 let bZenchoRemaining = 0;
@@ -404,6 +407,7 @@ window.onload = () => {
 
 function lotteryNextModeAndPoint() {
  currentPoint = 0;
+ isPtZoneCrossedPending = false;
  let modeRoll = Math.random() * 100;
  
  if (modeRoll < 40) {
@@ -885,9 +889,21 @@ function playSlot(isViaSkip) {
     pointUwanose = upRoll < 45 ? 50 : (upRoll < 90 ? 100 : (upRoll < 99 ? 300 : 600));
    }
    
+   let oldPoint = currentPoint;
    currentPoint += pointUwanose;
    serifuHTML = `<br><div style="color:#ff5722; font-size:22px; font-weight:bold;">🔥 特化ゾーン上乗せ: +${pointUwanose}pt！</div>`;
    soundUwanose告知();
+
+   // ★ v4.65 修正：特化ゾーン中での「100pt刻みの節目跨ぎ」または「天井ぶち抜け」を完全監視
+   let oldZoneFloor = Math.floor(oldPoint / 100);
+   let newZoneFloor = Math.floor(currentPoint / 100);
+   if (newZoneFloor > oldZoneFloor || currentPoint >= targetPoint) {
+    isPtZoneCrossedPending = true; // 跨ぎを予約！
+   }
+
+   if (tokkaRemainingG === 0) {
+    serifuHTML += `<br><div style="color:#ff5722;">特化ゾーン終了！通常へ戻ります。</div>`;
+   }
   } 
   // 特化ゾーン前兆
   else if (tokkaZenchoRemaining > 0) {
@@ -924,36 +940,46 @@ function playSlot(isViaSkip) {
   }
   // 通常時の加算＆トリガー抽選
   else {
-   currentPoint++; 
+   // ★ v4.65 修正：特化ゾーン終了直後に「跨ぎ予約（Pending）」が立っていたら、最優先で前兆を発動させる
+   if (isPtZoneCrossedPending) {
+    isPtZoneCrossedPending = false; 
+    zenchoRemaining = Math.floor(Math.random() * 7) + 6; 
+    isZenchoHit = (currentPoint >= targetPoint);
+    zenchoLevel = isZenchoHit ? 3 : 1;
+    if (isZenchoHit) pbTrigger契機 = "規定ポイント到達";
+    serifuHTML = generateSerifuHTML(isZenchoHit);
+   } else {
+    currentPoint++; 
 
-   if (roleName === "強チェリー" && Math.random() < 0.03) {
-    isStrongCherryDirectAt = true; isZenchoHit = true; pbTrigger契機 = "強チェリー直撃";
-    zenchoRemaining = Math.floor(Math.random() * 5) + 4; zenchoLevel = 3; 
-    addSlotHistory(`通常時 強チェリーからAT直撃前兆へ！`);
-   } 
-   else if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
-    // ★ 修正：全役の特化ゾーン当選率を一律「20%」超絶底上げ！
-    let tokkaProb = (roleName === "弱スイカ") ? 0.23 : (roleName === "弱チェリー" ? 0.30 : (roleName === "強スイカ" ? 0.53 : 0.60));
-    if (Math.random() < tokkaProb) {
-     tokkaZenchoRemaining = 3; isTokkaZenchoHit = true; pbTrigger契機 = roleName;
-    } else if (Math.random() < 0.50) {
-     tokkaZenchoRemaining = 3; isTokkaZenchoHit = false; 
+    if (roleName === "強チェリー" && Math.random() < 0.03) {
+     isStrongCherryDirectAt = true; isZenchoHit = true; pbTrigger契機 = "強チェリー直撃";
+     zenchoRemaining = Math.floor(Math.random() * 5) + 4; zenchoLevel = 3; 
+     addSlotHistory(`通常時 強チェリーからAT直撃前兆へ！`);
+    } 
+    else if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
+     let tokkaProb = (roleName === "弱スイカ") ? 0.23 : (roleName === "弱チェリー" ? 0.30 : (roleName === "強スイカ" ? 0.53 : 0.60));
+     if (Math.random() < tokkaProb) {
+      tokkaZenchoRemaining = 3; isTokkaZenchoHit = true; pbTrigger契機 = roleName;
+     } else if (Math.random() < 0.50) {
+      tokkaZenchoRemaining = 3; isTokkaZenchoHit = false; 
+     }
     }
-   }
-   else {
-    let reachPointZone = (currentPoint % 100 === 0);
-    let reachCeiling = (currentPoint >= targetPoint);
+    else {
+     let reachPointZone = (currentPoint % 100 === 0);
+     let reachCeiling = (currentPoint >= targetPoint);
 
-    if (reachCeiling) {
-     zenchoRemaining = Math.floor(Math.random() * 7) + 6; isZenchoHit = true; pbTrigger契機 = "規定ポイント到達"; zenchoLevel = 3;
-    } else if (reachPointZone) {
-     zenchoRemaining = Math.floor(Math.random() * 7) + 6; 
-     isZenchoHit = (currentPoint === targetPoint);
-     zenchoLevel = isZenchoHit ? 2 : 1;
+     if (reachCeiling) {
+      zenchoRemaining = Math.floor(Math.random() * 7) + 6; isZenchoHit = true; pbTrigger契機 = "規定ポイント到達"; zenchoLevel = 3;
+     } else if (reachPointZone) {
+      zenchoRemaining = Math.floor(Math.random() * 7) + 6; 
+      isZenchoHit = (currentPoint === targetPoint);
+      zenchoLevel = isZenchoHit ? 2 : 1;
+     }
     }
    }
   }
 
+  // 安全弁：何らかの理由で通常の流れでぶち抜けて前兆に入っていない場合の即時発動
   if (currentPoint >= targetPoint && zenchoRemaining === 0 && tokkaRemainingG === 0 && tokkaZenchoRemaining === 0) {
    zenchoRemaining = Math.floor(Math.random() * 7) + 6; isZenchoHit = true; pbTrigger契機 = "規定ポイント到達"; zenchoLevel = 3;
   }
@@ -1073,7 +1099,6 @@ function playSlot(isViaSkip) {
    if (isTriggeredB) {
     battleState = "PRE"; 
     bZenchoRemaining = Math.floor(Math.random() * 3) + 3; 
-    // ★ 修正：前兆に突入しただけでは atCurrentGames をリセットしない！
    }
    
    if (atRemainingMedal <= 0) { atRemainingMedal = 0; if (battleState === "NONE") wasZeroMedalLastG = true; }
@@ -1099,10 +1124,8 @@ function playSlot(isViaSkip) {
      enemyHP = enemyMaxHP; soundBattleStart();
      bSerifuHTML = `<br><div style="color:#ff9800; font-weight:bold; font-size:20px;">⚔️ 敵出現！ vs ${enemyType} ⚔️</div>`;
      
-     // ★ 修正：ガチでバトルを「獲得（発展告知）」した瞬間にだけカウントを0にリセット！
      atCurrentGames = 0;
     } else {
-     // ガセ前兆終了時は何事もなかったかのようにバトルカウント継続！
      battleState = "NONE";
      bSerifuHTML = `<br><div style="color:#7f8c8d;">（気配が消え去った…）</div>`;
     }
