@@ -266,7 +266,7 @@ button{cursor:pointer}
 <body>
 
 <div id="slotArea">
- <div class="version-tag">v4.65 [ptぶち抜き前兆完全対応版]</div>
+ <div class="version-tag">v4.70</div>
 
  <div class="volume-container">
   <span>🔈 音量:</span>
@@ -330,8 +330,10 @@ let currentPoint = 0;
 let currentSlotMode = "A";  
 let targetPoint = 600;      
 
-/* 特化ゾーン管理 */
+/* ★ 特化ゾーン管理(演出フロー統合化用) */
+let tokkaState = "NONE";       // "NONE", "KOKUCHI"(告知), "ACTIVE"(特化中), "RESULT"(リザルト)
 let tokkaRemainingG = 0;    
+let tokkaTotalGetPt = 0;    // 特化ゾーン内での合計上乗せpt記録用
 
 /* プチボーナス（PB）用の管理変数 */
 let pbBellCount = 0;      
@@ -367,7 +369,7 @@ let zenchoLevel = 1;
 let tokkaZenchoRemaining = 0;
 let isTokkaZenchoHit = false;
 
-/* ★ v4.65 特化ゾーンでの跨ぎ・ぶち抜きを監視する予約フラグ */
+/* 特化ゾーンでの跨ぎ・ぶち抜きを監視する予約フラグ */
 let isPtZoneCrossedPending = false; 
 
 /* --- バトルの変数管理 --- */
@@ -593,19 +595,20 @@ function updateSlotDisplay() {
  }
  
  if (currentMode === "NORMAL") {
-  if (tokkaRemainingG > 0) {
+  // ★ ① 修正：前兆や特化前兆など、通常時は何があっても完全に「状態: 通常モード」を徹底隠蔽！
+  if (tokkaState === "ACTIVE") {
    stateEl.innerText = `状態: 🔥特化ゾーン中🔥 (あと ${tokkaRemainingG}G)`;
    stateEl.style.color = "#ff5722";
-  } else if (tokkaZenchoRemaining > 0 || zenchoRemaining > 0) {
-   stateEl.innerText = "状態: 🎬前兆ステージ🎬";
-   stateEl.style.color = "#2196f3";
+  } else if (tokkaState === "KOKUCHI" || tokkaState === "RESULT") {
+   stateEl.innerText = "状態: 🔥特化ゾーン演出中🔥";
+   stateEl.style.color = "#ff9800";
   } else {
    stateEl.innerText = "状態: 通常モード";
    stateEl.style.color = "#fff";
   }
   subGEl.innerText = "";
   totalBBEl.style.display = "none";
-  document.getElementById("mainPlayBtn").innerText = tokkaRemainingG > 0 ? "特化レバーオン！ (-3枚)" : "PLAY (-3枚)";
+  document.getElementById("mainPlayBtn").innerText = tokkaState !== "NONE" ? "特化レバーオン！ (-3枚)" : "PLAY (-3枚)";
  } else if (isBonusReadyG) {
   stateEl.innerText = "状態: 🎰ボーナス確定画面🎰";
   stateEl.style.color = "#4caf50";
@@ -657,7 +660,7 @@ function generateSerifuHTML(isHit) {
  ];
  const poolMedium = [
   "「まさか…何か来るのか！？」", "「このパターンは…ちょっと怪しいな！」",
-  "「ザワザワしてきたぞ…気配が上がる！」", "「ここを乗り切れば…！」"
+  "「ザワザワしてきましたね…！」", "「ここを乗り切れば…！」"
  ];
  const poolHigh = [
   "「これは熱いぞ！間違いない！」", "「おのれ、そこか！もらった！」",
@@ -870,11 +873,20 @@ function playSlot(isViaSkip) {
 
  /* --- B. 通常モード --- */
  if (currentMode === "NORMAL") {
-  normalGames++;
   let serifuHTML = "";
 
-  // 特化ゾーン中の処理
-  if (tokkaRemainingG > 0) {
+  // ★ ② 修正：ポイント上乗せ特化ゾーン演出フロー管理マシーン
+  
+  // A. 告知画面（4G目）処理
+  if (tokkaState === "KOKUCHI") {
+   tokkaState = "ACTIVE";
+   tokkaRemainingG = 3;
+   tokkaTotalGetPt = 0;
+   serifuHTML = `<br><div style="color:#ff5722; font-size:24px; font-weight:bold; text-shadow: 0 0 6px #fff;">🔥 ポイント上乗せ特化ゾーン突入！！ 🔥</div><br><div style="color:#aaa;">3G間、毎ゲーム超上乗せチャンス！</div>`;
+   soundUwanose告知();
+  }
+  // B. 特化ゾーンガチ消化中（5〜7G目）処理
+  else if (tokkaState === "ACTIVE") {
    tokkaRemainingG--;
    let pointUwanose = 0;
    let upRoll = Math.random() * 100;
@@ -891,32 +903,50 @@ function playSlot(isViaSkip) {
    
    let oldPoint = currentPoint;
    currentPoint += pointUwanose;
-   serifuHTML = `<br><div style="color:#ff5722; font-size:22px; font-weight:bold;">🔥 特化ゾーン上乗せ: +${pointUwanose}pt！</div>`;
+   tokkaTotalGetPt += pointUwanose; // トータル獲得に加算
+   
+   serifuHTML = `<br><div style="color:#ff5722; font-size:22px; font-weight:bold;">🔥 上乗せ: +${pointUwanose}pt！</div>`;
    soundUwanose告知();
 
-   // ★ v4.65 修正：特化ゾーン中での「100pt刻みの節目跨ぎ」または「天井ぶち抜け」を完全監視
+   // ぶち抜き監視
    let oldZoneFloor = Math.floor(oldPoint / 100);
    let newZoneFloor = Math.floor(currentPoint / 100);
    if (newZoneFloor > oldZoneFloor || currentPoint >= targetPoint) {
-    isPtZoneCrossedPending = true; // 跨ぎを予約！
+    isPtZoneCrossedPending = true; 
    }
 
+   // 3G消化したら次はリザルト画面へ
    if (tokkaRemainingG === 0) {
-    serifuHTML += `<br><div style="color:#ff5722;">特化ゾーン終了！通常へ戻ります。</div>`;
+    tokkaState = "RESULT";
    }
-  } 
-  // 特化ゾーン前兆
+  }
+  // C. リザルト画面（8G目）処理
+  else if (tokkaState === "RESULT") {
+   tokkaState = "NONE"; // 次ゲームからは完全通常復帰
+   serifuHTML = `<br><div style="color:#ff5722; font-size:24px; font-weight:bold;">🏁 特化ゾーン成果リザルト 🏁</div><br><div style="color:#ffcd00; font-size:20px; font-weight:bold;">TOTAL ＋${tokkaTotalGetPt}pt 獲得！！</div>`;
+   soundWinSmall();
+  }
+  // D. 特化ゾーン前兆中（1〜3G目）
   else if (tokkaZenchoRemaining > 0) {
+   normalGames++; // 前兆中はゲーム数通常加算
+   currentPoint++; // 1G1pt加算も通常通り
    tokkaZenchoRemaining--;
+   
+   // フェイク前兆に紛れ込ませてセリフを出す
+   if (Math.random() < 0.40) {
+    serifuHTML = generateSerifuHTML(isTokkaZenchoHit);
+   }
+   
    if (tokkaZenchoRemaining === 0) {
     if (isTokkaZenchoHit) {
-     tokkaRemainingG = 3;
-     soundUwanose告知();
+     tokkaState = "KOKUCHI"; // 4G目に突入告知画面へ！
     }
    }
   }
-  // 通常の規定pt解除前兆
+  // E. 通常の規定pt解除前兆中
   else if (zenchoRemaining > 0) {
+   normalGames++; 
+   currentPoint++;
    zenchoRemaining--;
    
    if (zenchoRemaining === 0) {
@@ -938,9 +968,9 @@ function playSlot(isViaSkip) {
     }
    }
   }
-  // 通常時の加算＆トリガー抽選
+  // F. 平常通常時（ゲーム数および1G1pt加算が通常稼働するメイン処理）
   else {
-   // ★ v4.65 修正：特化ゾーン終了直後に「跨ぎ予約（Pending）」が立っていたら、最優先で前兆を発動させる
+   // 特化ゾーンで跨ぎPending予約が立っていたら最優先割り込み
    if (isPtZoneCrossedPending) {
     isPtZoneCrossedPending = false; 
     zenchoRemaining = Math.floor(Math.random() * 7) + 6; 
@@ -948,7 +978,11 @@ function playSlot(isViaSkip) {
     zenchoLevel = isZenchoHit ? 3 : 1;
     if (isZenchoHit) pbTrigger契機 = "規定ポイント到達";
     serifuHTML = generateSerifuHTML(isZenchoHit);
+    
+    normalGames++; 
+    currentPoint++;
    } else {
+    normalGames++; 
     currentPoint++; 
 
     if (roleName === "強チェリー" && Math.random() < 0.03) {
@@ -979,8 +1013,8 @@ function playSlot(isViaSkip) {
    }
   }
 
-  // 安全弁：何らかの理由で通常の流れでぶち抜けて前兆に入っていない場合の即時発動
-  if (currentPoint >= targetPoint && zenchoRemaining === 0 && tokkaRemainingG === 0 && tokkaZenchoRemaining === 0) {
+  // 万が一の安全弁
+  if (currentPoint >= targetPoint && zenchoRemaining === 0 && tokkaState === "NONE" && tokkaZenchoRemaining === 0) {
    zenchoRemaining = Math.floor(Math.random() * 7) + 6; isZenchoHit = true; pbTrigger契機 = "規定ポイント到達"; zenchoLevel = 3;
   }
 
