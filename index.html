@@ -258,7 +258,7 @@ button{cursor:pointer}
 <body>
 
 <div id="slotArea">
- <div class="version-tag">v4.80</div>
+ <div class="version-tag">v4.85 [スルー天井＆pt表示修正版]</div>
 
  <div class="volume-container">
   <span>🔈 音量:</span>
@@ -325,12 +325,12 @@ let targetPoint = 600;
 let tokkaState = "NONE";       
 let tokkaRemainingG = 0;    
 let tokkaTotalGetPt = 0;    
-let currentTokkaLoopProb = 0; // 今回の特化ゾーンが保持している裏ループ率
+let currentTokkaLoopProb = 0; 
 
 /* プチボーナス（PB）用の管理変数 */
 let pbBellCount = 0;      
 let pbAtHit = false;      
-let pbThroughCount = 0;   
+let pbThroughCount = 0;   // スルー回数カウント
 let pbTrigger契機 = "規定ゲーム数"; 
 let isPbFinishedG = false; 
 let pbStartSamai = 0;     
@@ -399,22 +399,22 @@ window.onload = () => {
  initAudio();
 };
 
-/* ★ 修正：モードAの天井選択割合を大幅緩和しマイルドに調整！ */
+/* ⑤ 修正：前回のポイント引き継ぎオカルトバグを完全根絶するクリーンアップ仕様 */
 function lotteryNextModeAndPoint() {
- currentPoint = 0;
- isPtZoneCrossedPending = false;
+ currentPoint = 0; // ここで確実に0にリセット！
+ isPtZoneCrossedPending = false; // 前兆予約フラグも完全クリア！
  let modeRoll = Math.random() * 100;
  
- if (modeRoll < 35) { // モードA比率を少し抑えて35%に
+ if (modeRoll < 35) { 
   currentSlotMode = "A";
   let ptRoll = Math.random() * 100;
   if (ptRoll < 5) targetPoint = 100;
-  else if (ptRoll < 25) targetPoint = 200; // 200のゾーンを強化
+  else if (ptRoll < 25) targetPoint = 200; 
   else if (ptRoll < 30) targetPoint = 300;
-  else if (ptRoll < 45) targetPoint = 400; // 400のゾーンを強化
+  else if (ptRoll < 45) targetPoint = 400; 
   else if (ptRoll < 50) targetPoint = 500;
-  else targetPoint = 600; // 天井割合を77%➔50%へ緩和！
- } else if (modeRoll < 75) { // モードBは40%
+  else targetPoint = 600; 
+ } else if (modeRoll < 75) { 
   currentSlotMode = "B";
   let ptRoll = Math.random() * 100;
   if (ptRoll < 15) targetPoint = 100;
@@ -422,7 +422,7 @@ function lotteryNextModeAndPoint() {
   else if (ptRoll < 35) targetPoint = 300;
   else if (ptRoll < 40) targetPoint = 400;
   else targetPoint = 500; 
- } else if (modeRoll < 95) { // モードCは20%
+ } else if (modeRoll < 95) { 
   currentSlotMode = "C";
   let ptRoll = Math.random() * 100;
   if (ptRoll < 22) targetPoint = 100;
@@ -587,9 +587,6 @@ function updateSlotDisplay() {
  }
  
  if (currentMode === "NORMAL") {
-  if (tokkaState === "ACTIVE") {
-   document.getElementById("msgDisplay").innerHTML = `<div>🔥特化ゾーン中🔥 (残り: ${tokkaRemainingG}G)</div>`;
-  }
   subGEl.innerText = "";
   totalBBEl.style.display = "none";
   document.getElementById("mainPlayBtn").innerText = tokkaState !== "NONE" ? "特化レバーオン！ (-3枚)" : "PLAY (-3枚)";
@@ -675,14 +672,12 @@ function getRandomHazureReels() {
 function playSlot(isViaSkip) {
  initAudio();
  
- // ① 修正：プチボ終了画面からのジャッジゲーム。ここで通常復帰時のモード再抽選を即完了させてバグを防ぐ！
  if (currentMode === "PETIT_BONUS" && isPbFinishedG) {
   isPbFinishedG = false; 
   if (pbAtHit) {
    nextBonusType = "AT_DIRECT";
   } else {
-   nextBonusType = "THROUGH";
-   lotteryNextModeAndPoint(); // ★転落確定の瞬間に裏モードと規定ptを0ptからクリーンに再抽選！
+   nextBonusType = "PB_THROUGH"; // スルー専用フラグに流す
   }
   isBonusReadyG = true; 
   document.getElementById("msgDisplay").innerHTML = `<div>レバーオンしろ！ [±0枚]</div><br><span style="color:#fff; font-weight:bold;">🎰 図柄を狙え！運命の生揃いレバーオン！ 🎰</span>`;
@@ -794,7 +789,7 @@ function playSlot(isViaSkip) {
    battleState = "NONE";
    battleFailedGraceG = false; 
    wasZeroMedalLastG = false; 
-   pbThroughCount = 0; 
+   pbThroughCount = 0; // スルー回数クリア
    isBattle1G連Loop = false; 
    isHikimodoshiMode = false; 
    hikimodoshiGames = 0;
@@ -802,36 +797,51 @@ function playSlot(isViaSkip) {
    
    payMsgHTML = `<div>777揃い [±0枚]</div><br><span style="color:#e91e63; font-size:20px;">🔴 BIG BONUS(AT) 150枚スタート！</span>`;
    let contractReason = (nextBonusType === "AT_DIRECT") ? "プチボ中AT当選" : pbTrigger契機;
-   // ★ 修正：データ履歴の当選契機に滞在モードと解除ptを追加表示！
    addSlotHistory(`${normalGames}G → メインAT突入！[契機:${contractReason}][滞在モード:${currentSlotMode} / 解除規定pt:${targetPoint}pt]`);
    soundBonusStart();
   } 
   else if (nextBonusType === "PB") {
-   if (Math.random() < 0.10) {
+   // ★ 修正：3スルー（4回目の当たり）なら1:9判定を完全に破壊してAT（777）を強制発動！
+   if (pbThroughCount >= 3) {
     countBB++;
     bonusStartSamaiG = netSamai; 
     document.getElementById("reel1").innerText = "7️⃣";
     document.getElementById("reel2").innerText = "7️⃣";
     document.getElementById("reel3").innerText = "7️⃣";
     currentMode = "BIG"; atRemainingMedal = 150; totalBigGames = 0; atCurrentGames = 0; battleState = "NONE"; battleFailedGraceG = false; wasZeroMedalLastG = false; pbThroughCount = 0; isBattle1G連Loop = false; isHikimodoshiMode = false; hikimodoshiGames = 0; hasHikimodoshi権利 = false;
-    payMsgHTML = `<div>777揃い [±0枚]</div><br><span style="color:#e91e63; font-size:20px;">🔴 BIG BONUS(AT) 150枚スタート！</span>`;
-    addSlotHistory(`${normalGames}G → 1:9振り分け突破でAT直行！[滞在モード:${currentSlotMode} / 解除規定pt:${targetPoint}pt]`);
+    payMsgHTML = `<div>777揃い [±0枚]</div><br><span style="color:#e91e63; font-size:20px;">🔥 ボーナススルー天井発動!! AT直行確定！ 🔥</span>`;
+    addSlotHistory(`${normalGames}G → 4回目のボーナス[契機:ボーナススルー天井][滞在モード:${currentSlotMode}]`);
     soundBonusStart();
    } else {
-    countRB++;
-    currentMode = "PETIT_BONUS";
-    pbBellCount = 0; pbAtHit = false; isPbFinishedG = false; pbStartSamai = netSamai; 
-    document.getElementById("reel1").innerText = "7️⃣";
-    document.getElementById("reel2").innerText = "7️⃣";
-    document.getElementById("reel3").innerText = "🧭"; 
-    payMsgHTML = `<div>77BAR揃い [±0枚]</div><br><span style="color:#ff9800; font-weight:bold;">🟢 プチボーナス開始！(14枚ベル8回で終了) 🟢</span>`;
-    addSlotHistory(`${normalGames}G → プチボーナス突入！[契機:${pbTrigger契機}][滞在モード:${currentSlotMode} / 解除規定pt:${targetPoint}pt]`);
-    soundBonusStart();
+    // 3スルー未満なら通常の1:9判定へ
+    if (Math.random() < 0.10) {
+     countBB++;
+     bonusStartSamaiG = netSamai; 
+     document.getElementById("reel1").innerText = "7️⃣";
+     document.getElementById("reel2").innerText = "7️⃣";
+     document.getElementById("reel3").innerText = "7️⃣";
+     currentMode = "BIG"; atRemainingMedal = 150; totalBigGames = 0; atCurrentGames = 0; battleState = "NONE"; battleFailedGraceG = false; wasZeroMedalLastG = false; pbThroughCount = 0; isBattle1G連Loop = false; isHikimodoshiMode = false; hikimodoshiGames = 0; hasHikimodoshi権利 = false;
+     payMsgHTML = `<div>777揃い [±0枚]</div><br><span style="color:#e91e63; font-size:20px;">🔴 BIG BONUS(AT) 150枚スタート！</span>`;
+     addSlotHistory(`${normalGames}G → 1:9振り分け突破でAT直行！[滞在モード:${currentSlotMode} / 解除規定pt:${targetPoint}pt]`);
+     soundBonusStart();
+    } else {
+     countRB++;
+     currentMode = "PETIT_BONUS";
+     pbBellCount = 0; pbAtHit = false; isPbFinishedG = false; pbStartSamai = netSamai; 
+     document.getElementById("reel1").innerText = "7️⃣";
+     document.getElementById("reel2").innerText = "7️⃣";
+     document.getElementById("reel3").innerText = "🧭"; 
+     payMsgHTML = `<div>77BAR揃い [±0枚]</div><br><span style="color:#ff9800; font-weight:bold;">🟢 プチボーナス開始！(14枚ベル8回で終了) 🟢</span>`;
+     addSlotHistory(`${normalGames}G → プチボーナス突入！[契機:${pbTrigger契機}][滞在モード:${currentSlotMode} / 解除規定pt:${targetPoint}pt]`);
+     soundBonusStart();
+    }
    }
   }
-  else if (nextBonusType === "THROUGH") {
+  else if (nextBonusType === "PB_THROUGH") {
+   // プチボ昇格失敗での完全通常戻り
    currentMode = "NORMAL";
    pbThroughCount++; 
+   lotteryNextModeAndPoint(); // ★ ここで完全に0ptから次モードとpt天井をクリーン生成！
    normalGames = 0;  
    isHikimodoshiMode = false; 
    hasHikimodoshi権利 = false;
@@ -851,30 +861,24 @@ function playSlot(isViaSkip) {
  if (currentMode === "NORMAL") {
   let serifuHTML = "";
 
-  // 1. 特化ゾーン関連フロー
-  
-  // A. 突入告知画面（4G目）
+  // A. 突入告知画面（4G目）処理
   if (tokkaState === "KOKUCHI") {
-   // ② 修正：特化ゾーン中もゲーム数は進行させる！
    normalGames++; 
    tokkaState = "ACTIVE";
-   tokkaRemainingG = 5; // ⑤ 修正：3G➔5Gに延長！
+   tokkaRemainingG = 5; 
    tokkaTotalGetPt = 0;
    
-   // ④ 修正：突入画面でのレア役による重複ストック抽選対応
    if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
     let loopProb = (roleName === "弱スイカ") ? 25 : (roleName === "弱チェリー" ? 33 : (roleName === "強スイカ" ? 40 : 60));
-    if (Math.random() * 100 < loopProb) {
-     currentTokkaLoopProb = loopProb; // ループストックをあらかじめ予約書き換え
-    }
+    if (Math.random() * 100 < loopProb) currentTokkaLoopProb = loopProb; 
    }
    
-   serifuHTML = `<br><div style="color:#ff5722; font-size:24px; font-weight:bold; text-shadow: 0 0 6px #fff;">🔥 ポイント上乗せ特化ゾーン（5G）突入！！ 🔥</div>`;
-   soundUwanose告知();
+   // 修正：1G目開始の告知テキストを明示
+   payMsgHTML = `<div style="color:#ff5722; font-size:24px; font-weight:bold; text-shadow: 0 0 6px #fff;">🔥 ポイント上乗せ特化ゾーン突入！！ 🔥</div><br><div style="color:#aaa;">5G間、毎ゲーム超上乗せチャンス！</div>`;
   }
-  // B. 特化ゾーンガチ消化中（5G間）
+  // B. 特化ゾーンガチ消化中（5G間）処理
   else if (tokkaState === "ACTIVE") {
-   normalGames++; // ② 修正：特化消化中もゲーム数を進行！
+   normalGames++; 
    tokkaRemainingG--;
    let pointUwanose = 0;
    let upRoll = Math.random() * 100;
@@ -893,7 +897,8 @@ function playSlot(isViaSkip) {
    currentPoint += pointUwanose;
    tokkaTotalGetPt += pointUwanose; 
    
-   serifuHTML = `<br><div style="color:#ff5722; font-size:22px; font-weight:bold;">🔥 上乗せ: +${pointUwanose}pt！</div>`;
+   // ★ 修正：毎ゲーム液晶に現在の成立役からの上乗せptとトータル獲得ptをリアルタイム表示！
+   payMsgHTML = `<div style="color:#ff5722; font-size:22px; font-weight:bold;">🔥 特化上乗せ: +${pointUwanose}pt！</div><div style="color:#ffcd00; font-size:18px; font-weight:bold; margin-top:5px;">(特化内トータル: +${tokkaTotalGetPt}pt)</div>`;
    soundUwanose告知();
 
    // ぶち抜き監視
@@ -911,22 +916,18 @@ function playSlot(isViaSkip) {
   else if (tokkaState === "RESULT") {
    tokkaState = "NONE"; 
    
-   // ④ 修正：リザルト画面でのレア役による重複ストック抽選対応
    if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
     let loopProb = (roleName === "弱スイカ") ? 25 : (roleName === "弱チェリー" ? 33 : (roleName === "強スイカ" ? 40 : 60));
-    if (Math.random() * 100 < loopProb) {
-     currentTokkaLoopProb = loopProb; 
-    }
+    if (Math.random() * 100 < loopProb) currentTokkaLoopProb = loopProb; 
    }
 
-   // ③ 修正：リザルトから通常時に戻る時、ループ率をパスしていたら即前兆発動！
    if (Math.random() * 100 < currentTokkaLoopProb && !isPtZoneCrossedPending && currentPoint < targetPoint) {
     tokkaZenchoRemaining = 3;
     isTokkaZenchoHit = true;
     addSlotHistory(`特化ゾーンループ当選！裏ストックを放出します。`);
    }
    
-   serifuHTML = `<br><div style="color:#ff5722; font-size:24px; font-weight:bold;">🏁 特化ゾーン成果リザルト 🏁</div><br><div style="color:#ffcd00; font-size:20px; font-weight:bold;">TOTAL ＋${tokkaTotalGetPt}pt 獲得！！</div>`;
+   payMsgHTML = `<div style="color:#ff5722; font-size:24px; font-weight:bold;">🏁 特化ゾーン成果リザルト 🏁</div><br><div style="color:#ffcd00; font-size:20px; font-weight:bold;">TOTAL ＋${tokkaTotalGetPt}pt 獲得！！</div>`;
    soundWinSmall();
   }
   // D. 特化ゾーン前兆中
@@ -988,7 +989,6 @@ function playSlot(isViaSkip) {
     } 
     else if (["弱スイカ", "弱チェリー", "強スイカ", "強チェリー"].includes(roleName)) {
      let tokkaProb = (roleName === "弱スイカ") ? 0.23 : (roleName === "弱チェリー" ? 0.30 : (roleName === "強スイカ" ? 0.53 : 0.60));
-     // ③ 修正：今回の突入時にループ率をセット
      currentTokkaLoopProb = (roleName === "弱スイカ") ? 25 : (roleName === "弱チェリー" ? 33 : (roleName === "強スイカ" ? 40 : 60));
      
      if (Math.random() < tokkaProb) {
@@ -1012,11 +1012,12 @@ function playSlot(isViaSkip) {
    }
   }
 
+  // 安全弁（1G目フリーズ防止）
   if (currentPoint >= targetPoint && zenchoRemaining === 0 && tokkaState === "NONE" && tokkaZenchoRemaining === 0) {
    zenchoRemaining = Math.floor(Math.random() * 7) + 6; isZenchoHit = true; pbTrigger契機 = "規定ポイント到達"; zenchoLevel = 3;
   }
 
-  // 引き戻しゾーン
+  // 引き戻し判定
   if (isHikimodoshiMode && hasHikimodoshi権利) {
    hikimodoshiGames++;
    let isHikimodoshiHit = (hikimodoshiGames < 32 && Math.random() < (1 / 32)) || (hikimodoshiGames >= 32);
@@ -1066,7 +1067,7 @@ function playSlot(isViaSkip) {
     currentMode = "NORMAL"; normalGames = 0; lastCalculatedGain = netSamai - bonusStartSamaiG; hasHikimodoshi権利 = true; isHikimodoshiMode = (Math.random() < 0.15);
     payMsgHTML = `<div>${payMsgHTML}</div><br><span style="color:#795548; font-size:20px;">📊 AT終了 📊<br>最終獲得：${lastCalculatedGain}枚</span>`;
     addSlotHistory(`AT終了：最終獲得 ${lastCalculatedGain}枚 (通常へ転落)[滞在していたモード:${currentSlotMode}]`);
-    lotteryNextModeAndPoint(); 
+    lotteryNextModeAndPoint(); // ★ AT終了後も完全に0ptから次モードへ
     soundBonusEnd();
    }
    document.getElementById("msgDisplay").innerHTML = payMsgHTML;
@@ -1089,7 +1090,7 @@ function playSlot(isViaSkip) {
      currentMode = "NORMAL"; normalGames = 0; lastCalculatedGain = netSamai - bonusStartSamaiG; hasHikimodoshi権利 = true; isHikimodoshiMode = (Math.random() < 0.15);
      payMsgHTML = `<div>${payMsgHTML}</div><br><span style="color:#795548; font-size:20px;">📊 AT終了 📊<br>最終獲得：${lastCalculatedGain}枚</span>`;
      addSlotHistory(`AT終了：最終獲得 ${lastCalculatedGain}枚 (0枚スルー転落)[滞在していたモード:${currentSlotMode}]`);
-     lotteryNextModeAndPoint(); 
+     lotteryNextModeAndPoint(); // ★ ここでも完全リセット
      soundBonusEnd();
     }
     document.getElementById("msgDisplay").innerHTML = payMsgHTML;
@@ -1154,7 +1155,7 @@ function playSlot(isViaSkip) {
      else { enemyType = "ゴッデス"; enemyMaxHP = 70; battleLimitG = 5; }
      if (isGoddesLoop) { enemyType = "ゴッデス"; enemyMaxHP = 70; battleLimitG = 5; isGoddesLoop = false; }
      
-     // ⑥ 修正：敵の残り体力を毎回確実にMAXリセットしてペナルティを排除！
+     // ⑥ 修正：敵HPを出現の瞬間に100%完全リセット（取り逃し引き継ぎペナルティを完全抹殺）！
      enemyHP = enemyMaxHP; 
      soundBattleStart();
      bSerifuHTML = `<br><div style="color:#ff9800; font-weight:bold; font-size:20px;">⚔️ 敵出現！ vs ${enemyType} ⚔️</div>`;
@@ -1169,7 +1170,7 @@ function playSlot(isViaSkip) {
 
   } else if (battleState === "BATTLE") {
    battleCount++;
-   // ★ 修正：ハズレ目・子役からのベースダメージ量をガツンと底上げ（2➔4, 4➔8）！
+   // バトルの与ダメージ底上げ（4, 8, 15, 35）
    let dmg = (roleName === "ハズレ" || roleName.includes("ベル")) ? 4 : (roleName === "リプレイ" ? 8 : (roleName.includes("弱") ? 15 : 35));
    if (enemyType === "メタル") dmg = (roleName.includes("弱") || roleName.includes("強")) ? 1 : 0;
    enemyHP = Math.max(0, enemyHP - dmg);
